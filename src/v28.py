@@ -8,10 +8,16 @@ from src.config import Config
 
 log = logging.getLogger(__name__)
 
-def age_sex_edits(gender, age, dx_code, category):
+CMS_VARIABLES_V28 = {
+    'coding_intensity_adjuster': 0.059,
+    'normalization_factor': 1.015
+}
+
+def age_sex_edits_v28(gender, age, dx_code, category):
         category = _age_sex_edit_1(gender, age, dx_code)
         category = _age_sex_edit_2(gender, age, dx_code)
         category = _age_sex_edit_3(gender, age, dx_code)
+        category = _age_sex_edit_4(gender, age, dx_code)
 
         return category
 
@@ -59,3 +65,90 @@ def _age_sex_edit_4(gender, age, dx_code):
             'P930',  'P938',  'P961',  'P962'
     ]:
         return 'NA'
+
+def get_disease_interactions_v28(categories: list) -> list:
+    cancer = False
+    cancer_list = ['HCC17', 'HCC18', 'HCC19', 'HCC20', 'HCC21', 'HCC22', 'HCC23']
+    diabetes = False
+    diabetes_list = ['HCC35', 'HCC36', 'HCC37', 'HCC38']
+    card_resp_fail = False
+    card_resp_fail_list = ['HCC211', 'HCC212', 'HCC213']
+    hf = False
+    hf_list = ['HCC221', 'HCC222', 'HCC223', 'HCC224', 'HCC225', 'HCC226']
+    chr_lung = False
+    chr_lung_list = ['HCC276', 'HCC277', 'HCC278', 'HCC279', 'HCC280']
+    kidney_v28 = False
+    kidney_v28_list = ['HCC326', 'HCC327', 'HCC328', 'HCC329']
+    sepsis = False
+    sepsis_list = ['HCC2']
+    g_substance_use_disorder_v28 = False
+    g_substance_use_disorder_v28_list = ['HCC135', 'HCC136', 'HCC137', 'HCC138', 'HCC139']
+    g_pyshiatric_v28 = False
+    g_pyshiatric_v28_list = ['HCC151', 'HCC152', 'HCC153', 'HCC154', 'HCC155']
+    neuro_v28 = False
+    neuro_v28_list = ['HCC180', 'HCC181', 'HCC182', 'HCC190', 'HCC191', 'HCC192', 'HCC195', 'HCC196', 'HCC198', 'HCC199']
+    ulcer_v28 = False
+    ulcer_v28_list = ['HCC379', 'HCC380', 'HCC381', 'HCC382']
+    
+    
+    for category in cancer_list:
+        if category in categories:
+            cancer = True
+            break
+    for category in diabetes_list:
+        if category in categories:
+            diabetes = True
+            break
+    for category in card_resp_fail_list:
+        if category in categories:
+            card_resp_fail = True
+            break
+    for category in hf_list:
+        if category in categories:
+            hf = True
+            break
+    for category in chr_lung_list:
+        if category in categories:
+            chr_lung = True
+            break
+    for category in kidney_v28_list:
+        if category in categories:
+            kidney_v28 = True
+            break
+    for category in sepsis_list:
+        if category in categories:
+            sepsis = True
+            break
+    for category in g_substance_use_disorder_v28_list:
+        if category in categories:
+            g_substance_use_disorder_v28 = True
+            break
+    for category in g_pyshiatric_v28_list:
+        if category in categories:
+            g_pyshiatric_v28 = True
+            break
+    for category in neuro_v28_list:
+        if category in categories:
+            neuro_v28 = True
+            break
+    for category in ulcer_v28_list:
+        if category in categories:
+            ulcer_v28 = True
+            break
+    if 'HCC238' in categories:
+        hcc238 = True
+    else:
+        hcc238 = False    
+    
+
+    interactions = {
+        'DIABETES_HF_V28': bool(diabetes*hf),
+        'HF_CHR_LUNG_V28': bool(hf*chr_lung),
+        'HF_KIDNEY_V28': bool(hf*kidney_v28),
+        'CHR_LUNG_CARD_RESP_FAIL_V28': bool(chr_lung*card_resp_fail),
+        'HF_HCC238_V28': bool(hf*hcc238),
+        'gSubUseDisorder_gPsych_V28': bool(g_substance_use_disorder_v28*g_pyshiatric_v28),
+    }
+    interaction_list = [key for key, value in interactions.items() if value]
+
+    return interaction_list

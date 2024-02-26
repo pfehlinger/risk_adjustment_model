@@ -6,13 +6,16 @@ import pandas as pd
 
 from pathlib import Path
 from src.config import Config
-from src.v24 import age_sex_edits
+from src.v24 import age_sex_edits_v24, get_disease_interactions_v24, CMS_VARIABLES_V24
+from src.v28 import age_sex_edits_v28, get_disease_interactions_v28, CMS_VARIABLES_V28
 from src.beneficiary import Beneficiary
+from src.utilities import determine_age
+from typing import Union, Optional
 
 log = logging.getLogger(__name__)
 
 class MedicareModel:
-    '''
+    """
     General idea is that 
 
     Logging file added
@@ -30,76 +33,142 @@ class MedicareModel:
     3. Call the score method, taking in one or more beneficiary objects, returns a dictionary of results for each beneficiary object passed in
        DO I WANT TO HAAVE THAT STORED AS AN OBJECT OF THE BENEFICIARY CLASS
     4. Since each model may have its own nuances, want to put each model in its own class that then handles certain category stuff
+    """
 
-    '''
     def __init__(self, version, year=None):
         # PF TO DO: Change the whole name thing here
         self.name = self.__class__.__name__
         self.version = version
         self.year = year
         # This should use the config directory or might not be necessary to exist
-        self.directory = Path(r'C:\Users\Philissa\Documents\development\risk_adjustment_scoring\src')
+        self.directory = Path(r'C:\Users\Philissa\Documents\development\risk_adjustment_model\src')
+        self.model_year = self._get_model_year()
         self.data_directory = self._get_data_directory()
         self.hierarchy_definitions = self._get_hierarchy_definitions()
         self.category_definitions = self._get_category_definitions()
         self.diag_to_category_map = self._get_diagnosis_code_to_category_mapping()
         self.category_weights = self._get_category_weights()
-
-    def score_beneficiary(self, gender: str, orec: str, medicaid: bool, id='dummy_id_0', diagnosis_codes=[], age=None, dob=None):
+        self.coding_intesity_adjuster = self._get_coding_intensity_adjuster()
+        self.normalization_factor = self._get_normalization_factor()
     
-        beneficiary = Beneficiary(id=id, gender=gender, orec=orec, medicaid=medicaid, age=age, dob=dob, diagnosis_codes=diagnosis_codes)
-        results = self._score(beneficiary)
+    def score(self, gender: str, orec: str, medicaid: bool, diagnosis_codes=[], age=None, dob=None, verbose=False) -> dict:
+        """
+        Determines the risk score for the inputs.
 
-        return results
+        One or both of age and dob needs to be passed in. CMS uses age as of February first for model purposes, as such if DOB is passed in
+        the code will determine age as of February first. If age alone is passed in, it uses that for the age.
 
-    def score_beneficiary_batch(self, beneficiary_demo_file: pd.DataFrame, beneficiary_diag_file: pd.DataFrame):
-        output_dict = {}
-        for row in beneficiary_demo_file.iloc[:,:].itertuples():
-            diagnosis_codes = []
-            if row.Index in beneficiary_diag_file.index:
-                if beneficiary_diag_file.loc[row.Index].shape[0] == 1:
-                    diagnosis_codes = [beneficiary_diag_file.loc[row.Index]['dx_code']]
-                else:
-                    diagnosis_codes = beneficiary_diag_file.loc[row.Index]['dx_code'].to_list()
-            beneficiary = Beneficiary(id=row.Index, gender=row.gender, orec=row.orec, medicaid=True, age=row.age, diagnosis_codes=diagnosis_codes)
-            results = self._score(beneficiary)
-            output_dict.update(results)
+        Args:
+            gender (str): Gender of the beneficiary being scored, valid values M or F.
+            orec (str): Original Entitlement Reason Code of the beneficiary. See: https://bluebutton.cms.gov/assets/ig/ValueSet-orec.html for valid values
+            medicaid (bool): Beneficiary medicaid status, True or False
+            diagnosis_codes (list): List of the diagnosis codes associated with the beneficiary
+            age (int): Age of the beneficiary, can be None.
+            dob (str): Date of birth of the beneficiary, can be None
+            verbose (bool): Indicates if trimmed output or full output is desired
 
-        return output_dict
-        
-        # output_dict = {}
-        # for beneficiary in beneficiaries:
-        #     beneficiary_info = {}
-        #     categories_dict, category_list = self.get_categories(beneficiary)
-        #     beneficiary_score_profile = {}
-            
-        #     for population in ['CN_Aged', 'CN_Disabled', 'CP_Aged', 'CP_Disabled', 'CF_Aged', 'CF_Disabled']:
-        #         combine_dict = {}
-        #         score_dict = self.get_weights(category_list, population)
-        #         # now combine the dictionaries to make output
-        #         for key, value in score_dict['categories'].items():
-                    
-        #             if categories_dict.get(key):
-        #                 value.update(categories_dict.get(key))
-        #                 combine_dict[key] = value
-        #             else:
-        #                 combine_dict[key] = value
-        #         score_dict['categories'] = combine_dict
-                
-        #         beneficiary_score_profile[population] = score_dict
-            
-        #     beneficiary_info['beneficiary_score_profile'] = beneficiary_score_profile
-        #     output_dict[beneficiary.id] = beneficiary_info
+        Returns:
+            dict: A dictionary containing the score information. If verbose is False the output looks like
+            'cn_aged': {
+                'score_raw': 123,
+                'score': 123,
+                'category_details': {
+                    'HCC1': {'weight': .5, 'diagnosis_codes': ['123', '456']},
+                    'HCC2': {'weight': .5, 'diagnosis_codes': ['123', '456']},
+                },
+                'category_list': ['HCC1', 'HCC2'],
+            },
+            'cn_disabled': {
+                ...
+            } ,  
+            'inputs': {
+                'age': 65,
+                'sex': 'F',
+                'medicaid': False,
+                'disabled': 0,
+                'origds': 0
+            },
+            'model_version': 'v24',
+            'coding_intensity_adjuster': .123,
+            'normalization_factor': .123
 
-        # return output_dict
-    
-    def _score(self, beneficiary):
-        """This is main entry point to run category model and generate output
-        Takes in a list of beneficiary objects returns a dictionary of beneficiary ids with
-        score profile information"""
-        output_dict = {}
-        beneficiary_info = {}
-        categories_dict, category_list = self.get_categories(beneficiary)
+            If verbose is True, the output looks like:
+            'beneficiary_score_profile': {
+                'CN_Aged': {
+                    'categories': {
+                        'HCC10': {
+                            'weight': 0.6,
+                            'type': 'disease',
+                            'category_number': 10,
+                            'category_description': 'Lymphoma and Other Cancers',
+                            'dropped_categories': None,
+                            'diagnosis_map': ['C8175', 'C8286', 'C9590']
+                        },
+                        'HCC55': {
+                            'weight': 0.6,
+                            'type': 'disease',
+                            'category_number': 55,
+                            'category_description': 'Substance Use Disorder, Moderate/Severe, or Substance Use with Complications',
+                            'dropped_categories': None,
+                            'diagnosis_map': ['F1114', 'F13988']
+                        },
+                        'HCC72': {
+                            'weight': 0.6,
+                            'type': 'disease',
+                            'category_number': 72,
+                            'category_description': 'Spinal Cord Disorders/Injuries',
+                            'dropped_categories': None,
+                            'diagnosis_map': ['S14157S']
+                        },
+                        'F65_69': {
+                            'weight': 0.6,
+                            'type': 'demographic',
+                            'category_number': None,
+                            'category_description': 'Female, 65 to 69 Years Old'
+                        }
+                    },
+                'score': 10.799999999999997,
+                'disease_score': 10.199999999999998,
+                'demographic_score': 0.6
+                },
+                'CN_Disabled': {
+                    ...
+                },
+            inputs: {
+                'age': 65,
+                'sex': 'F',
+                'medicaid': False,
+                'disabled': 0,
+                'origds': 0,
+                'diagnosis_codes: [123, 456]
+            },
+            'risk_model_age': 66,
+            'model_version': 'v24',
+            'year': 2024,
+            'coding_intensity_adjuster': .123,
+            'normalization_factor': .123,
+        """
+
+        risk_model_age = determine_age(age, dob)
+
+        output_dict = {
+            'inputs':  {
+                'gender': gender,
+                'orec': orec,
+                'medicaid': medicaid,
+                'age': age,
+                'dob': dob,
+                'diagnosis_codes': diagnosis_codes,
+                'year': self.year,
+            },
+            'risk_model_age': risk_model_age,
+            'model_version': self.version,
+            'model_year': self.model_year,
+            'coding_intensity_adjuster': self.coding_intesity_adjuster,
+            'normalization_factor': self.normalization_factor
+        }
+
+        categories_dict, category_list = self.get_categories(risk_model_age, gender, orec, medicaid, diagnosis_codes)
         beneficiary_score_profile = {}
         
         for population in ['CN_Aged', 'CN_Disabled', 'CP_Aged', 'CP_Disabled', 'CF_Aged', 'CF_Disabled']:
@@ -113,36 +182,44 @@ class MedicareModel:
                     combine_dict[key] = value
                 else:
                     combine_dict[key] = value
-            score_dict['categories'] = combine_dict
+            score_dict['category_details'] = combine_dict
+            score_dict['category_list'] = category_list
             
             beneficiary_score_profile[population] = score_dict
         
-        beneficiary_info['beneficiary_score_profile'] = beneficiary_score_profile
-        beneficiary_info['inputs'] = vars(beneficiary)
-        output_dict[beneficiary.id] = beneficiary_info
-        
+        if not verbose:
+            self._trim_output(beneficiary_score_profile)
+            
+        output_dict['beneficiary_score_profile'] = beneficiary_score_profile
+
         return output_dict
 
-    def _get_data_directory(self):
+    def _get_model_year(self):
         if not self.year:
-            pass
-            # Do os.path.walk, grab folders, max out the folder year, can worry about that later
+            dirs = os.listdir(self.directory / 'reference_data' / 'medicare' / self.version)
+            years = [int(dir) for dir in dirs]
+            max_year = max(years)
         else:
-            data_directory = self.directory / 'reference_data' / self.version / str(self.year)
+            max_year = self.year
+        return max_year
+    
+    def _get_data_directory(self) -> Path:
+
+        data_directory = self.directory / 'reference_data' / 'medicare' / self.version / str(self.model_year)
         return data_directory
         
-    def _get_hierarchy_definitions(self):
+    def _get_hierarchy_definitions(self) -> dict:
         with open(self.data_directory / 'hierarchy_definition.yaml') as file:
             hierarchy_definitions = yaml.safe_load(file)
         return hierarchy_definitions
     
-    def _get_category_definitions(self):
+    def _get_category_definitions(self) -> dict:
       
         with open(self.data_directory / 'category_definition.yaml') as file:
             category_definitions = yaml.safe_load(file)
         return category_definitions
     
-    def _get_diagnosis_code_to_category_mapping(self):
+    def _get_diagnosis_code_to_category_mapping(self) -> pd.DataFrame:
 
         diag_to_category_map = (
             pd.read_csv(self.data_directory / 'diag_to_category_map.txt', sep='|', header=None)
@@ -151,16 +228,34 @@ class MedicareModel:
         
         return diag_to_category_map        
     
-    def _get_category_weights(self):
+    def _get_category_weights(self) -> pd.DataFrame:
       
         weights = pd.read_csv(self.data_directory / 'weights.csv')
         return weights
+    
+    def _get_coding_intensity_adjuster(self):
+        coding_intensity_adjuster = 1
+        if self.version == 'v24':
+            coding_intensity_adjuster = 1 - CMS_VARIABLES_V24['coding_intensity_adjuster']
+        elif self.version == 'v28':
+            coding_intensity_adjuster = 1 - CMS_VARIABLES_V28['coding_intensity_adjuster']
+        
+        return coding_intensity_adjuster
+    
+    def _get_normalization_factor(self):
+        normalization_factor = 1
+        if self.version == 'v24':
+            normalization_factor = CMS_VARIABLES_V24['normalization_factor']
+        elif self.version == 'v28':
+            normalization_factor = CMS_VARIABLES_V28['normalization_factor']
 
-    def get_categories(self, beneficiary):
+        return normalization_factor
 
-        demo_categories = self.get_demographic_cats(self.version, beneficiary.age, beneficiary.gender, beneficiary.orec, beneficiary.medicaid)
-        if beneficiary.diagnosis_codes:
-            categories_dict = self.get_disease_categories(beneficiary.gender, beneficiary.age, beneficiary.diagnosis_codes)
+    def get_categories(self, age: int, gender: str, orec: str, medicaid: bool, diagnosis_codes: Union[str, list]):
+
+        demo_categories = self.get_demographic_cats(self.version, age, gender, orec, medicaid)
+        if diagnosis_codes:
+            categories_dict = self.get_disease_categories(gender, age, diagnosis_codes)
         else:
             categories_dict = {}
 
@@ -500,88 +595,15 @@ class MedicareModel:
 
         return category
 
-    def _get_disease_interactions(self, version, categories: list):
+    def _get_disease_interactions(self, version: str, categories: list) -> list:
         """Need to make this do something with version"""
-        cancer = False
-        cancer_list = ['HCC8', 'HCC9', 'HCC10', 'HCC11', 'HCC12']
-        diabetes = False
-        diabetes_list = ['HCC17', 'HCC18', 'HCC19']
-        card_resp_fail = False
-        card_resp_fail_list = ['HCC82', 'HCC83', 'HCC84']
-        chf = False
-        chf_list = ['HCC85']
-        g_copd_cf = False
-        g_copd_cf_list = ['HCC110', 'HCC111', 'HCC112']
-        renal_v24 = False
-        renal_v24_list = ['HCC134', 'HCC135', 'HCC136', 'HCC137', 'HCC138']
-        sepsis = False
-        sepsis_list = ['HCC2']
-        g_substance_use_disorder_v24 = False
-        g_substance_use_disorder_v24_list = ['HCC54', 'HCC55', 'HCC56']
-        g_pyshiatric_v24 = False
-        g_pyshiatric_v24_list = ['HCC57', 'HCC58', 'HCC59', 'HCC60']
-        
-        for category in cancer_list:
-            if category in categories:
-                cancer = True
-                break
-        for category in diabetes_list:
-            if category in categories:
-                diabetes = True
-                break
-        for category in card_resp_fail_list:
-            if category in categories:
-                card_resp_fail = True
-                break
-        for category in chf_list:
-            if category in categories:
-                chf = True
-                break
-        for category in g_copd_cf_list:
-            if category in categories:
-                g_copd_cf = True
-                break
-        for category in renal_v24_list:
-            if category in categories:
-                renal_v24 = True
-                break
-        for category in sepsis_list:
-            if category in categories:
-                sepsis = True
-                break
-        for category in g_substance_use_disorder_v24_list:
-            if category in categories:
-                g_substance_use_disorder_v24 = True
-                break
-        for category in g_pyshiatric_v24_list:
-            if category in categories:
-                g_pyshiatric_v24 = True
-                break
-        if 'HCC47' in categories:
-            hcc47 = True
-        else:
-            hcc47 = False    
-        if 'HCC85' in categories:
-            hcc85 = True
-        else:
-            hcc85 = False
-        if 'HCC96' in categories:
-            hcc96 = True
-        else:
-            hcc96 = False
+        interaction_list = []
+        if version == 'v24':
+            interaction_list = get_disease_interactions_v24(categories)
+        elif version == 'v28':
+            interaction_list = get_disease_interactions_v28(categories)
 
-        interactions = {
-            'HCC47_gCancer': bool(cancer*hcc47),
-            'DIABETES_CHF': bool(diabetes*chf),
-            'CHF_gCopdCF': bool(chf*g_copd_cf),
-            'HCC85_gRenal_V24': bool(hcc85*renal_v24),
-            'gCopdCF_CARD_RESP_FAIL': bool(g_copd_cf*card_resp_fail),
-            'HCC85_HCC96': bool(hcc85*hcc96),
-            'gSubstanceUseDisorder_gPsych': bool(g_pyshiatric_v24*g_substance_use_disorder_v24)
-        }
-        interaction_list = [key for key, value in interactions.items() if value]
-
-        return interaction_list
+        return interaction_list                                             
 
     def get_weights(self, categories: list, population: str):
         # This should be done once for each subpopulation, so a loop
@@ -618,15 +640,44 @@ class MedicareModel:
                         'category_description': value['descr'],
                     }
         cat_output['categories'] = category_dict
-        cat_output['score'] = score
-        cat_output['disease_score'] = disease_score
-        cat_output['demographic_score'] = demographic_score
-        
+        cat_output['score_raw'] = score
+        cat_output['disease_score_raw'] = disease_score
+        cat_output['demographic_score_raw'] = demographic_score
+
+        # Now apply coding intensity and normalization to scores
+        cat_output['score'] = self._apply_norm_factor_coding_adj(score)
+        cat_output['disease_score'] = self._apply_norm_factor_coding_adj(disease_score)
+        cat_output['demographic_score'] = self._apply_norm_factor_coding_adj(demographic_score)
+       
         return cat_output
 
+    def _apply_norm_factor_coding_adj(self, score: float) -> float:
+        return round(
+            round(
+                score * self.coding_intesity_adjuster, 4
+            )
+            / self.normalization_factor, 4
+        )
+
+    def _trim_output(self, score_dict: dict) -> dict:
+        """Takes in the verbose output and trims to the smaller output"""
+        for key, value in score_dict.items():
+            for key_2, value_2 in value.items():
+                if key_2 == 'categories':
+                    for category, info in value_2.items():
+                        del info['type']
+                        del info['category_number']
+                        del info['category_description']
+                        try: 
+                            del info['dropped_categories']
+                        except KeyError:
+                            pass
+                else:
+                    pass
 
     def validate_inputs(self):
         pass
+
 
 
 
