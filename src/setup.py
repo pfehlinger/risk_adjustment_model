@@ -19,7 +19,7 @@ setup(packages=find_packages(),
     ],
     include_package_data=True,
     package_dirc={"": "src"},
-    package_data={"data": ["*.yaml", "*.csv", "*.json", '*.txt']},
+    package_data={"reference_data": ["*.yaml", "*.csv", "*.json", '*.txt']},
     classifiers=[
         "Programming Language :: Python :: 3",
         "License :: OSI Approved :: MIT Software License",

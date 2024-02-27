@@ -40,7 +40,6 @@ class MedicareModel:
         self.version = version
         self.year = year
         # This should use the config directory or might not be necessary to exist
-        self.directory = Path(r'C:\Users\Philissa\Documents\development\risk_adjustment_model\src')
         self.model_year = self._get_model_year()
         self.data_directory = self._get_data_directory()
         self.hierarchy_definitions = self._get_hierarchy_definitions()
@@ -195,16 +194,18 @@ class MedicareModel:
 
     def _get_model_year(self):
         if not self.year:
-            dirs = os.listdir(self.directory / 'reference_data' / 'medicare' / self.version)
-            years = [int(dir) for dir in dirs]
-            max_year = max(years)
+            with importlib.resources.path('src.reference_data', 'medicare') as data_dir:
+                dirs = os.listdir(data_dir / self.version)
+                years = [int(dir) for dir in dirs]
+                max_year = max(years)
         else:
             max_year = self.year
         return max_year
     
     def _get_data_directory(self) -> Path:
 
-        data_directory = self.directory / 'reference_data' / 'medicare' / self.version / str(self.model_year)
+        with importlib.resources.path('src.reference_data', 'medicare') as data_dir:
+            data_directory = data_dir / self.version / str(self.model_year)
         return data_directory
         
     def _get_hierarchy_definitions(self) -> dict:
@@ -242,6 +243,7 @@ class MedicareModel:
         weights = {}
         col_map = {}
         with open(self.data_directory / 'weights.csv', 'r') as file:
+        # with importlib.resources.open_text('risk_adjustment_model.src.reference_data.medicare', )
             for i, line in enumerate(file):
                 parts = line.strip().split('|')
                 if i == 0:
@@ -350,56 +352,29 @@ class MedicareModel:
             'M65_69', 'M70_74', 'M75_79', 'M80_84', 'M85_89', 
             'M90_94', 'M95_GT'
         ]
-        if gender == 'F':
-            if 0 <= age <= 34:
-                demographic_category = female_demo_categories[0]
-            elif 35 <= age <= 44:
-                demographic_category = female_demo_categories[1]
-            elif 45 <= age <= 54:
-                demographic_category = female_demo_categories[2]
-            elif 55 <= age <= 59:
-                demographic_category = female_demo_categories[3]
-            elif 60 <= age <= 64:
-                demographic_category = female_demo_categories[4]
-            elif 65 <= age <= 69:
-                demographic_category = female_demo_categories[5]
-            elif 70 <= age <= 74:
-                demographic_category = female_demo_categories[6]
-            elif 75 <= age <= 79:
-                demographic_category = female_demo_categories[7]
-            elif 80 <= age <= 84:
-                demographic_category = female_demo_categories[8]
-            elif 85 <= age <= 89:
-                demographic_category = female_demo_categories[9]
-            elif 90 <= age <= 94:
-                demographic_category = female_demo_categories[10]
-            elif 95 <= age:
-                demographic_category = female_demo_categories[11]
-        else:
-            if 0 <= age <= 34:
-                demographic_category = male_demo_categories[0]
-            elif 35 <= age <= 44:
-                demographic_category = male_demo_categories[1]
-            elif 45 <= age <= 54:
-                demographic_category = male_demo_categories[2]
-            elif 55 <= age <= 59:
-                demographic_category = male_demo_categories[3]
-            elif 60 <= age <= 64:
-                demographic_category = male_demo_categories[4]
-            elif 65 <= age <= 69:
-                demographic_category = male_demo_categories[5]
-            elif 70 <= age <= 74:
-                demographic_category = male_demo_categories[6]
-            elif 75 <= age <= 79:
-                demographic_category = male_demo_categories[7]
-            elif 80 <= age <= 84:
-                demographic_category = male_demo_categories[8]
-            elif 85 <= age <= 89:
-                demographic_category = male_demo_categories[9]
-            elif 90 <= age <= 94:
-                demographic_category = male_demo_categories[10]
-            elif 95 <= age:
-                demographic_category = male_demo_categories[11]
+        demo_categories = [
+            'F0_34', 'F35_44', 'F45_54', 'F55_59', 'F60_64',
+            'F65_69', 'F70_74', 'F75_79', 'F80_84', 'F85_89', 
+            'F90_94', 'F95_GT',
+            'M0_34', 'M35_44', 'M45_54', 'M55_59', 'M60_64',
+            'M65_69', 'M70_74', 'M75_79', 'M80_84', 'M85_89', 
+            'M90_94', 'M95_GT'
+        ]
+        
+        for age_range in demo_categories:
+            age_band = age_range.replace(gender, '').split('_') 
+            lower, upper = 0, 999
+            if len(age_band) == 1:
+                lower = int(age_band[0])
+                upper = lower + 1
+            elif age_band[1] == 'GT':
+                lower = int(age_band[0])
+            else: 
+                lower = int(age_band[0])
+                upper = int(age_band[1]) + 1
+            if lower <= age < upper:
+                demographic_category = age_range
+                break
 
         return demographic_category
 
