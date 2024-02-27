@@ -1,8 +1,7 @@
-import pandas as pd
 import logging
 import os
 import yaml
-import pandas as pd
+import importlib.resources
 
 from pathlib import Path
 from src.config import Config
@@ -219,18 +218,44 @@ class MedicareModel:
             category_definitions = yaml.safe_load(file)
         return category_definitions
     
-    def _get_diagnosis_code_to_category_mapping(self) -> pd.DataFrame:
+    def _get_diagnosis_code_to_category_mapping(self) -> dict:
 
-        diag_to_category_map = (
-            pd.read_csv(self.data_directory / 'diag_to_category_map.txt', sep='|', header=None)
-            .rename({0: 'dx_code_no_decimal', 1: 'category_nbr', 2: 'unknown'}, axis=1)
-        )
+        diag_to_category_map = {}
+        with open(self.data_directory / 'diag_to_category_map.txt', 'r') as file:
+            for line in file:
+                # Split the line based on the delimiter
+                parts = line.strip().split('|')  # Change ',' to your delimiter
+                diag = parts[0].strip()
+                category = 'HCC' + parts[1].strip()
+                if diag not in diag_to_category_map:
+                    diag_to_category_map[diag] = []
+                diag_to_category_map[diag].append(category)
+
+        # diag_to_category_map = (
+        #     pd.read_csv(self.data_directory / 'diag_to_category_map.txt', sep='|', header=None)
+        #     .rename({0: 'dx_code_no_decimal', 1: 'category_nbr', 2: 'unknown'}, axis=1)
+        # )
         
         return diag_to_category_map        
     
-    def _get_category_weights(self) -> pd.DataFrame:
-      
-        weights = pd.read_csv(self.data_directory / 'weights.csv')
+    def _get_category_weights(self) -> dict:
+        weights = {}
+        col_map = {}
+        with open(self.data_directory / 'weights.csv', 'r') as file:
+            for i, line in enumerate(file):
+                parts = line.strip().split('|')
+                if i == 0:
+                    # Validate column order OR create column map
+                    for x, col in enumerate(parts):
+                        col_map[col] = x
+                else:
+                    # Assume
+                    pop_weight = {}
+                    category = parts[col_map['category']]
+                    for key in col_map.keys():
+                        if key != 'category':
+                            pop_weight[key] = float(parts[col_map[key]])
+                    weights[category] = pop_weight
         return weights
     
     def _get_coding_intensity_adjuster(self):
@@ -541,17 +566,17 @@ class MedicareModel:
     def _get_disease_categories(self, gender, age, diagnosis_codes):
 
         if isinstance(diagnosis_codes, list):
-            dx_categories = self.diag_to_category_map[self.diag_to_category_map['dx_code_no_decimal'].isin(diagnosis_codes)]
+            dx_categories = {diag:self.diag_to_category_map[diag] for diag in diagnosis_codes if diag in self.diag_to_category_map}
         else:
-            dx_categories = self.diag_to_category_map[self.diag_to_category_map['dx_code_no_decimal'].isin([diagnosis_codes])]
-
+            dx_categories = {diagnosis_codes:self.diag_to_category_map[diagnosis_codes]}
         # dx_categories['category_nbr'] = dx_categories.apply(lambda x: age_sex_edits(gender, age, x['dx_code_no_decimal'], x['category_nbr']), axis=1)
 
         cat_dict = {}
-        unique_cats = dx_categories['category_nbr'].unique().tolist()
+        all_cats = [value for catlist in dx_categories.values() for value in catlist]
+        unique_cats = set(all_cats)
         for cat in unique_cats:
-            dx_codes = dx_categories[dx_categories['category_nbr']==cat]['dx_code_no_decimal'].unique().tolist()
-            cat_dict['HCC'+str(cat)] = dx_codes
+            dx_codes = [key for key, value in dx_categories.items() if cat in value]
+            cat_dict[cat] = dx_codes
         
         return cat_dict
 
@@ -608,7 +633,6 @@ class MedicareModel:
     def get_weights(self, categories: list, population: str):
         # This should be done once for each subpopulation, so a loop
         # get the score, disease score, demographic score, hcc information
-        weights_new = self.category_weights.set_index('category')
         # all here
         category_dict = {}
         cat_output = {}
@@ -623,7 +647,7 @@ class MedicareModel:
             for key, value in self.category_definitions['category'].items():
                 if cat == key:
                     # weight = decimal.Decimal(weights_new['cn_aged'].loc[key])
-                    weight = weights_new[population.lower()].loc[key]
+                    weight = self.category_weights[cat][population.lower()]
                     score += weight
                         
                     if value['type'] == 'disease' or value['type'] == 'disease_interaction':
