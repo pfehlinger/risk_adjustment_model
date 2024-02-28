@@ -385,7 +385,7 @@ class MedicareModel:
         
         return disabled, orig_disabled
 
-    def _get_demographic_cats(self, age, gender):
+    def _get_demographic_cats(self, age, gender, population):
         """
         Determine the demographic category based on age and gender.
 
@@ -406,16 +406,20 @@ class MedicareModel:
             it returns that category.
         """
         # PF: Might want to refactor to use yaml/json with demographic type to get the categories
-        demo_categories = [
-            'F0_34', 'F35_44', 'F45_54', 'F55_59', 'F60_64',
-            'F65_69', 'F70_74', 'F75_79', 'F80_84', 'F85_89', 
-            'F90_94', 'F95_GT',
-            'M0_34', 'M35_44', 'M45_54', 'M55_59', 'M60_64',
-            'M65_69', 'M70_74', 'M75_79', 'M80_84', 'M85_89', 
-            'M90_94', 'M95_GT'
-        ]
+        if population == 'NE':
+            demo_category_ranges = [
+                '0_34', '35_44', '45_54', '55_59', '60_64',
+                '65', '66', '67', '68', '69', '70_74', 
+                '75_79', '80_84', '85_89', '90_94', '95_GT',
+            ]
+        else:
+            demo_category_ranges = [
+                '0_34', '35_44', '45_54', '55_59', '60_64',
+                '65_69', '70_74', '75_79', '80_84', '85_89', 
+                '90_94', '95_GT',
+            ]
         
-        for age_range in demo_categories:
+        for age_range in demo_category_ranges:
             age_band = age_range.replace(gender, '').split('_') 
             lower, upper = 0, 999
             if len(age_band) == 1:
@@ -427,97 +431,13 @@ class MedicareModel:
                 lower = int(age_band[0])
                 upper = int(age_band[1]) + 1
             if lower <= age < upper:
-                demographic_category = age_range
+                demographic_category_range = age_range
                 break
 
-        return demographic_category
-
-    def _get_new_enrollee_demographic_cats(self, age, gender, orec):
-        """better documentation and stuff"""
-        female_demo_categories = [
-            'NEF0_34', 'NEF35_44', 'NEF45_54', 'NEF55_59', 'NEF60_64',
-            'NEF65', 'NEF66', 'NEF67', 'NEF68', 'NEF69', 'NEF70_74', 
-            'NEF75_79', 'NEF80_84', 'NEF85_89', 'NEF90_94', 'NEF95_GT'
-        ]
-        male_demo_categories = [
-            'NEM0_34', 'NEM35_44', 'NEM45_54', 'NEM55_59', 'NEM60_64',
-            'NEM65', 'NEM66', 'NEM67', 'NEM68', 'NEM69', 'NEM70_74', 
-            'NEM75_79', 'NEM80_84', 'NEM85_89', 'NEM90_94', 'NEM95_GT'
-        ]
-        if gender == 'F':
-            if 0 <= age <= 34:
-                demographic_category = female_demo_categories[0]
-            elif 35 <= age <= 44:
-                demographic_category = female_demo_categories[1]
-            elif 45 <= age <= 54:
-                demographic_category = female_demo_categories[2]
-            elif 55 <= age <= 59:
-                demographic_category = female_demo_categories[3]
-            elif 60 <= age <= 63:
-                demographic_category = female_demo_categories[4]
-            elif age == 64 and orec != '0':
-                demographic_category = female_demo_categories[4]
-            elif age == 64 and orec == '0':
-                demographic_category = female_demo_categories[5]
-            elif age == 65:
-                demographic_category = female_demo_categories[5]
-            elif age == 66:
-                demographic_category = female_demo_categories[6]
-            elif age == 67:
-                demographic_category = female_demo_categories[7]
-            elif age == 68:
-                demographic_category = female_demo_categories[8]
-            elif age == 69:
-                demographic_category = female_demo_categories[9]
-            elif 70 <= age <= 74:
-                demographic_category = female_demo_categories[10]
-            elif 75 <= age <= 79:
-                demographic_category = female_demo_categories[11]
-            elif 80 <= age <= 84:
-                demographic_category = female_demo_categories[12]
-            elif 85 <= age <= 89:
-                demographic_category = female_demo_categories[13]
-            elif 90 <= age <= 94:
-                demographic_category = female_demo_categories[14]
-            elif 95 <= age:
-                demographic_category = female_demo_categories[15]
+        if population == 'NE':
+            demographic_category = 'NE'.join(gender, demographic_category_range)
         else:
-            if 0 <= age <= 34:
-                demographic_category = male_demo_categories[0]
-            elif 35 <= age <= 44:
-                demographic_category = male_demo_categories[1]
-            elif 45 <= age <= 54:
-                demographic_category = male_demo_categories[2]
-            elif 55 <= age <= 59:
-                demographic_category = male_demo_categories[3]
-            elif 60 <= age <= 63:
-                demographic_category = male_demo_categories[4]
-            elif age == 64 and orec != '0':
-                demographic_category = male_demo_categories[4]
-            elif age == 64 and orec == '0':
-                demographic_category = male_demo_categories[5]
-            elif age == 65:
-                demographic_category = male_demo_categories[5]
-            elif age == 66:
-                demographic_category = male_demo_categories[6]
-            elif age == 67:
-                demographic_category = male_demo_categories[7]
-            elif age == 68:
-                demographic_category = male_demo_categories[8]
-            elif age == 69:
-                demographic_category = male_demo_categories[9]
-            elif 70 <= age <= 74:
-                demographic_category = male_demo_categories[10]
-            elif 75 <= age <= 79:
-                demographic_category = male_demo_categories[11]
-            elif 80 <= age <= 84:
-                demographic_category = male_demo_categories[12]
-            elif 85 <= age <= 89:
-                demographic_category = male_demo_categories[13]
-            elif 90 <= age <= 94:
-                demographic_category = male_demo_categories[14]
-            elif 95 <= age:
-                demographic_category = male_demo_categories[15]
+            demographic_category = ''.join(gender, demographic_category_range)
 
         return demographic_category
 
