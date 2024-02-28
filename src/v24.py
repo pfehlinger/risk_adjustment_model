@@ -4,9 +4,6 @@ import os
 import yaml
 
 from pathlib import Path
-from src.config import Config
-
-log = logging.getLogger(__name__)
 
 
 CMS_VARIABLES_V24 = {
