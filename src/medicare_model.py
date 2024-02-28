@@ -4,14 +4,11 @@ import yaml
 import importlib.resources
 
 from pathlib import Path
-from src.config import Config
 from src.v24 import age_sex_edits_v24, get_disease_interactions_v24, CMS_VARIABLES_V24
 from src.v28 import age_sex_edits_v28, get_disease_interactions_v28, CMS_VARIABLES_V28
-from src.beneficiary import Beneficiary
 from src.utilities import determine_age
 from typing import Union, Optional
 
-log = logging.getLogger(__name__)
 
 class MedicareModel:
     """
@@ -35,11 +32,8 @@ class MedicareModel:
     """
 
     def __init__(self, version, year=None):
-        # PF TO DO: Change the whole name thing here
-        self.name = self.__class__.__name__
         self.version = version
         self.year = year
-        # This should use the config directory or might not be necessary to exist
         self.model_year = self._get_model_year()
         self.data_directory = self._get_data_directory()
         self.hierarchy_definitions = self._get_hierarchy_definitions()
@@ -232,18 +226,12 @@ class MedicareModel:
                     diag_to_category_map[diag] = []
                 diag_to_category_map[diag].append(category)
 
-        # diag_to_category_map = (
-        #     pd.read_csv(self.data_directory / 'diag_to_category_map.txt', sep='|', header=None)
-        #     .rename({0: 'dx_code_no_decimal', 1: 'category_nbr', 2: 'unknown'}, axis=1)
-        # )
-        
         return diag_to_category_map        
     
     def _get_category_weights(self) -> dict:
         weights = {}
         col_map = {}
         with open(self.data_directory / 'weights.csv', 'r') as file:
-        # with importlib.resources.open_text('risk_adjustment_model.src.reference_data.medicare', )
             for i, line in enumerate(file):
                 parts = line.strip().split('|')
                 if i == 0:
@@ -260,7 +248,19 @@ class MedicareModel:
                     weights[category] = pop_weight
         return weights
     
-    def _get_coding_intensity_adjuster(self):
+    def _get_coding_intensity_adjuster(self) -> float:
+        """
+        Get the coding intensity adjuster based on the CMS Model version.
+        
+        Returns:
+            float: The coding intensity adjuster.
+        
+        Notes:
+            This function retrieves the coding intensity adjuster based on the version 
+            specified in the object. It looks up the adjuster value from the respective 
+            CMS_VARIABLES dictionary based on the version provided ('v24' or 'v28'). 
+            If the version is not recognized, the default adjuster value of 1 is returned.
+        """
         coding_intensity_adjuster = 1
         if self.version == 'v24':
             coding_intensity_adjuster = 1 - CMS_VARIABLES_V24['coding_intensity_adjuster']
@@ -269,7 +269,19 @@ class MedicareModel:
         
         return coding_intensity_adjuster
     
-    def _get_normalization_factor(self):
+    def _get_normalization_factor(self) -> float:
+        """
+        Get the normalization factor based on the CMS Model version.
+        
+        Returns:
+            float: The normalization factor.
+        
+        Notes:
+            This function retrieves the normalization factor based on the version 
+            specified in the object. It looks up the adjuster value from the respective 
+            CMS_VARIABLES dictionary based on the version provided ('v24' or 'v28'). 
+            If the version is not recognized, the default normalization value of 1 is returned.
+        """
         normalization_factor = 1
         if self.version == 'v24':
             normalization_factor = CMS_VARIABLES_V24['normalization_factor']
@@ -674,9 +686,7 @@ class MedicareModel:
                 else:
                     pass
 
-    def validate_inputs(self):
-        pass
 
-
+    # --- Setup methods ---
 
 
