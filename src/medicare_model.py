@@ -147,6 +147,11 @@ class MedicareModel:
 
         risk_model_age = determine_age(age, dob)
 
+        if population == 'NE':
+            risk_model_population = self._get_new_enrollee_population(risk_model_age, orec, medicaid)
+        else:
+            risk_model_population = population
+
         output_dict = {
             'inputs':  {
                 'gender': gender,
@@ -159,15 +164,16 @@ class MedicareModel:
                 'population': population
             },
             'risk_model_age': risk_model_age,
+            'risk_model_population': risk_model_population,
             'model_version': self.version,
             'model_year': self.model_year,
             'coding_intensity_adjuster': self.coding_intesity_adjuster,
             'normalization_factor': self.normalization_factor
         }
 
-        categories_dict, category_list = self.get_categories(risk_model_age, gender, orec, medicaid, diagnosis_codes, population)
+        categories_dict, category_list = self.get_categories(risk_model_age, gender, orec, medicaid, diagnosis_codes, risk_model_population)
         combine_dict = {}
-        score_dict = self.get_weights(category_list, population)
+        score_dict = self.get_weights(category_list, risk_model_population)
         # now combine the dictionaries to make output
         for key, value in score_dict['categories'].items():
             if categories_dict.get(key):
@@ -234,7 +240,7 @@ class MedicareModel:
         # DO I NEED TO DO SOMETHING WITH VERSION
         demo_cats = []
         disabled, orig_disabled = self._determine_disabled(age, orec)
-        demo_cats.append(self._get_demographic_cats(age, gender))
+        demo_cats.append(self._get_demographic_cats(age, gender, population))
         demo_int = self._get_demographic_interactions(gender, orig_disabled)
         if demo_int:
             demo_cats.append(demo_int)
@@ -304,9 +310,6 @@ class MedicareModel:
                 'disease_score': 0.4927,
                 'demographic_score': 0.4927}
         """
-        # This should be done once for each subpopulation, so a loop
-        # get the score, disease score, demographic score, hcc information
-        # all here
         category_dict = {}
         cat_output = {}
         score = 0
@@ -315,8 +318,7 @@ class MedicareModel:
         for cat in categories:
             for key, value in self.category_definitions['category'].items():
                 if cat == key:
-                    # weight = decimal.Decimal(weights_new['cn_aged'].loc[key])
-                    weight = self.category_weights[cat][population.lower()]
+                    weight = self.category_weights[cat][population]
                     score += weight
                         
                     if value['type'] == 'disease' or value['type'] == 'disease_interaction':
@@ -406,7 +408,7 @@ class MedicareModel:
             it returns that category.
         """
         # PF: Might want to refactor to use yaml/json with demographic type to get the categories
-        if population == 'NE':
+        if population[:2] == 'NE':
             demo_category_ranges = [
                 '0_34', '35_44', '45_54', '55_59', '60_64',
                 '65', '66', '67', '68', '69', '70_74', 
@@ -434,10 +436,10 @@ class MedicareModel:
                 demographic_category_range = age_range
                 break
 
-        if population == 'NE':
-            demographic_category = 'NE'.join(gender, demographic_category_range)
+        if population[:2] == 'NE':
+            demographic_category = f'NE{gender}{demographic_category_range}'
         else:
-            demographic_category = ''.join(gender, demographic_category_range)
+            demographic_category = f'{gender}{demographic_category_range}'
 
         return demographic_category
 
@@ -451,7 +453,7 @@ class MedicareModel:
 
         return demo_interaction
 
-    def _get_new_enrollee_demographic_interactions(self, age, orec, medicaid):
+    def _get_new_enrollee_population(self, age, orec, medicaid):
         """
         NE_ORIGDS       = (AGEF>=65)*(OREC='1');
         NMCAID_NORIGDIS = (NEMCAID <=0 and NE_ORIGDS <=0);
@@ -460,21 +462,19 @@ class MedicareModel:
         MCAID_ORIGDIS   = (NEMCAID > 0 and NE_ORIGDS > 0);
         """
         if age >= 65 and orec == '1':
-            # NE_ORIGDS
             ne_originally_disabled = True
         else:
             ne_originally_disabled = False
         if not ne_originally_disabled and not medicaid:
-            # Non medicaid non originally disabled
-            ne_demo_int = 'NMCAID_NORIGDIS'
+            ne_population = 'NE_NMCAID_NORIGDIS'
         if not ne_originally_disabled and medicaid:
-            ne_demo_int = 'MCAID_NORIGDIS'
+            ne_population = 'NE_MCAID_NORIGDIS'
         if ne_originally_disabled and not medicaid:
-            ne_demo_int = 'NMCAID_ORIGDIS'
+            ne_population = 'NE_NMCAID_ORIGDIS'
         if ne_originally_disabled and medicaid:
-            ne_demo_int = 'MCAID_ORIGDIS'
+            ne_population = 'NE_MCAID_ORIGDIS'
 
-        return ne_demo_int      
+        return ne_population      
 
     def _get_disease_categories(self, gender, age, diagnosis_codes):
 
@@ -725,7 +725,7 @@ class MedicareModel:
         col_map = {}
         with open(self.data_directory / 'weights.csv', 'r') as file:
             for i, line in enumerate(file):
-                parts = line.strip().split('|')
+                parts = line.strip().split(',')
                 if i == 0:
                     # Validate column order OR create column map
                     for x, col in enumerate(parts):
