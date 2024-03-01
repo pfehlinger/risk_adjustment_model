@@ -1,69 +1,69 @@
 category:
     ART_OPENINGS_PRESS_ULCER:
-        descr: ART_OPENINGS_PRESS_ULCER
+        descr: Artificial Openings for Feeding or Elimination*Pressure Ulcer
         type: disease_interaction
     ASP_SPEC_B_PNEUM_PRES_ULC:
-        descr: ASP_SPEC_B_PNEUM_PRES_ULC
+        descr: Aspiration and Specified Bacterial Pneumonias*Pressure Ulcer
         type: disease_interaction
     CHF_gCopdCF:
-        descr: CHF_gCopdCF
+        descr: Congestive Heart Failure*Chronic Obstructive Pulmonary Disease
         type: disease_interaction
     DIABETES_CHF:
-        descr: DIABETES_CHF
+        descr: Congestive Heart Failure*Diabetes
         type: disease_interaction
     DISABLED_HCC161:
-        descr: DISABLED_HCC161
+        descr: Disabled, Chronic Ulcer of the Skin, Except Pressure Ulcer
         type: disease_interaction
     DISABLED_HCC39:
-        descr: DISABLED_HCC39
+        descr: Disabled, Bone/Joint Muscle Infections/Necrosis
         type: disease_interaction
     DISABLED_HCC6:
-        descr: DISABLED_HCC6
+        descr: Disabled, Opportunistic Infections
         type: disease_interaction
     DISABLED_HCC77:
-        descr: DISABLED_HCC77
+        descr: Disabled, Multiple Sclerosis
         type: disease_interaction
     DISABLED_HCC85:
-        descr: DISABLED_HCC85
+        descr: Disabled, Congestive Heart Failure
         type: disease_interaction
     DISABLED_PRESSURE_ULCER:
-        descr: DISABLED_PRESSURE_ULCER
+        descr: Disabled, Pressure Ulcer
         type: disease_interaction
     F0_34:
-        descr: Female, 0 to 34 Years Old
+        descr: Female, 0 to 34 Years old
         type: demographic
     F35_44:
-        descr: Female, 35 to 44 Years Old
+        descr: Female, 35 to 44 Years old
         type: demographic
     F45_54:
-        descr: Female, 45 to 54 Years Old
+        descr: Female, 45 to 54 Years old
         type: demographic
     F55_59:
-        descr: Female, 55 to 59 Years Old
+        descr: Female, 55 to 59 Years old
         type: demographic
     F60_64:
-        descr: Female, 60 to 64 Years Old
+        descr: Female, 60 to 64 Years old
         type: demographic
     F65_69:
-        descr: Female, 65 to 69 Years Old
+        descr: Female, 65 to 69 Years old
         type: demographic
     F70_74:
-        descr: Female, 70 to 74 Years Old
+        descr: Female, 70 to 74 Years old
         type: demographic
     F75_79:
-        descr: Female, 75 to 79 Years Old
+        descr: Female, 75 to 79 Years old
         type: demographic
     F80_84:
-        descr: Female, 80 to 84 Years Old
+        descr: Female, 80 to 84 Years old
         type: demographic
     F85_89:
-        descr: Female, 85 to 89 Years Old
+        descr: Female, 85 to 89 Years old
         type: demographic
     F90_94:
-        descr: Female, 90 to 94 Years Old
+        descr: Female, 90 to 94 Years old
         type: demographic
     F95_GT:
-        descr: Female, Greater than or equal to 95 Years Old
+        descr: Female, 95 Years old or Over
         type: demographic
     HCC1:
         descr: HIV/AIDS
@@ -279,7 +279,7 @@ category:
         number: 47
         type: disease
     HCC47_gCancer:
-        descr: HCC47_gCancer
+        descr: Immune Disorders*Cancer
         type: disease_interaction
     HCC48:
         descr: Coagulation Defects and Other Specified Hematological Disorders
@@ -391,10 +391,10 @@ category:
         number: 85
         type: disease
     HCC85_HCC96:
-        descr: HCC85_HCC96
+        descr: Congestive Heart Failure*Specified Heart Arrhythmias
         type: disease_interaction
     HCC85_gRenal_V24:
-        descr: HCC85_gRenal_V24
+        descr: Congestive Heart Failure*Renal
         type: disease_interaction
     HCC86:
         descr: Acute Myocardial Infarction
@@ -420,69 +420,172 @@ category:
         descr: Intracranial Hemorrhage
         number: 99
         type: disease
+    LTIMCAID:
+        descr: Medicaid
+        type: demographic_interaction
     M0_34:
-        descr: Male, 0 to 34 Years Old
+        descr: Male, 0 to 34 Years old
         type: demographic
     M35_44:
-        descr: Male, 35 to 44 Years Old
+        descr: Male, 35 to 44 Years old
         type: demographic
     M45_54:
-        descr: Male, 45 to 54 Years Old
+        descr: Male, 45 to 54 Years old
         type: demographic
     M55_59:
-        descr: Male, 55 to 59 Years Old
+        descr: Male, 55 to 59 Years old
         type: demographic
     M60_64:
-        descr: Male, 60 to 64 Years Old
+        descr: Male, 60 to 64 Years old
         type: demographic
     M65_69:
-        descr: Male, 65 to 69 Years Old
+        descr: Male, 65 to 69 Years old
         type: demographic
     M70_74:
-        descr: Male, 70 to 74 Years Old
+        descr: Male, 70 to 74 Years old
         type: demographic
     M75_79:
-        descr: Male, 75 to 79 Years Old
+        descr: Male, 75 to 79 Years old
         type: demographic
     M80_84:
-        descr: Male, 80 to 84 Years Old
+        descr: Male, 80 to 84 Years old
         type: demographic
     M85_89:
-        descr: Male, 85 to 89 Years Old
+        descr: Male, 85 to 89 Years old
         type: demographic
     M90_94:
-        descr: Male, 90 to 94 Years Old
+        descr: Male, 90 to 94 Years old
         type: demographic
     M95_GT:
-        descr: Male, Greater than or equal to 95 Years Old
+        descr: Male, 95 Years old or Over
         type: demographic
-    PRESSURE_ULCER:
-        descr: PRESSURE_ULCER
-        type: disease_interaction
+    NEF0_34:
+        descr: New Enrollee, Female, 0 to 34 Years old
+        type: demographic
+    NEF35_44:
+        descr: New Enrollee, Female, 35 to 44 Years old
+        type: demographic
+    NEF45_54:
+        descr: New Enrollee, Female, 45 to 54 Years old
+        type: demographic
+    NEF55_59:
+        descr: New Enrollee, Female, 55 to 59 Years old
+        type: demographic
+    NEF60_64:
+        descr: New Enrollee, Female, 60 to 64 Years old
+        type: demographic
+    NEF65:
+        descr: New Enrollee, Female, 65 Years old
+        type: demographic
+    NEF66:
+        descr: New Enrollee, Female, 66 Years old
+        type: demographic
+    NEF67:
+        descr: New Enrollee, Female, 67 Years old
+        type: demographic
+    NEF68:
+        descr: New Enrollee, Female, 68 Years old
+        type: demographic
+    NEF69:
+        descr: New Enrollee, Female, 69 Years old
+        type: demographic
+    NEF70_74:
+        descr: New Enrollee, Female, 70 to 74 Years old
+        type: demographic
+    NEF75_79:
+        descr: New Enrollee, Female, 75 to 79 Years old
+        type: demographic
+    NEF80_84:
+        descr: New Enrollee, Female, 80 to 84 Years old
+        type: demographic
+    NEF85_89:
+        descr: New Enrollee, Female, 85 to 89 Years old
+        type: demographic
+    NEF90_94:
+        descr: New Enrollee, Female, 90 to 94 Years old
+        type: demographic
+    NEF95_GT:
+        descr: New Enrollee, Female, 95 Years old or Over
+        type: demographic
+    NEM0_34:
+        descr: New Enrollee, Male, 0 to 34 Years old
+        type: demographic
+    NEM35_44:
+        descr: New Enrollee, Male, 35 to 44 Years old
+        type: demographic
+    NEM45_54:
+        descr: New Enrollee, Male, 45 to 54 Years old
+        type: demographic
+    NEM55_59:
+        descr: New Enrollee, Male, 55 to 59 Years old
+        type: demographic
+    NEM60_64:
+        descr: New Enrollee, Male, 60 to 64 Years old
+        type: demographic
+    NEM65:
+        descr: New Enrollee, Male, 65 Years old
+        type: demographic
+    NEM66:
+        descr: New Enrollee, Male, 66 Years old
+        type: demographic
+    NEM67:
+        descr: New Enrollee, Male, 67 Years old
+        type: demographic
+    NEM68:
+        descr: New Enrollee, Male, 68 Years old
+        type: demographic
+    NEM69:
+        descr: New Enrollee, Male, 69 Years old
+        type: demographic
+    NEM70_74:
+        descr: New Enrollee, Male, 70 to 74 Years old
+        type: demographic
+    NEM75_79:
+        descr: New Enrollee, Male, 75 to 79 Years old
+        type: demographic
+    NEM80_84:
+        descr: New Enrollee, Male, 80 to 84 Years old
+        type: demographic
+    NEM85_89:
+        descr: New Enrollee, Male, 85 to 89 Years old
+        type: demographic
+    NEM90_94:
+        descr: New Enrollee, Male, 90 to 94 Years old
+        type: demographic
+    NEM95_GT:
+        descr: New Enrollee, Male, 95 Years old or Over
+        type: demographic
+    OriginallyDisabled_Female:
+        descr: Originally Disabled, Female
+        type: demographic_interaction
+    OriginallyDisabled_Male:
+        descr: Originally Disabled, Male
+        type: demographic_interaction
     SCHIZOPHRENIA_CHF:
-        descr: SCHIZOPHRENIA_CHF
+        descr: Schizophrenia*Congestive Heart Failure
         type: disease_interaction
     SCHIZOPHRENIA_SEIZURES:
-        descr: SCHIZOPHRENIA_SEIZURES
+        descr: Schizophrenia*Seizure Disorders and Convulsions
         type: disease_interaction
     SCHIZOPHRENIA_gCopdCF:
-        descr: SCHIZOPHRENIA_gCopdCF
+        descr: Schizophrenia*Chronic Obstructive Pulmonary Disease
         type: disease_interaction
     SEPSIS_ARTIF_OPENINGS:
-        descr: SEPSIS_ARTIF_OPENINGS
+        descr: Sepsis*Artificial Openings for Feeding or Elimination
         type: disease_interaction
     SEPSIS_ASP_SPEC_BACT_PNEUM:
-        descr: SEPSIS_ASP_SPEC_BACT_PNEUM
+        descr: Sepsis*Aspiration and Specified Bacterial Pneumonias
         type: disease_interaction
     SEPSIS_PRESSURE_ULCER:
-        descr: SEPSIS_PRESSURE_ULCER
+        descr: Sepsis*Pressure Ulcer
         type: disease_interaction
     gCopdCF_ASP_SPEC_B_PNEUM:
-        descr: gCopdCF_ASP_SPEC_B_PNEUM
+        descr: Chronic Obstructive Pulmonary Disease*Aspiration and Specified Bacterial
+            Pneumonias
         type: disease_interaction
     gCopdCF_CARD_RESP_FAIL:
-        descr: gCopdCF_CARD_RESP_FAIL
+        descr: Cardiorespiratory Failure*Chronic Obstructive Pulmonary Disease
         type: disease_interaction
     gSubstanceUseDisorder_gPsych:
-        descr: gSubstanceUseDisorder_gPsych
+        descr: Substance Use Disorder*Psychiatric
         type: disease_interaction

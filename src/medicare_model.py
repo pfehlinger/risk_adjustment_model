@@ -282,7 +282,6 @@ class MedicareModel:
         if interactions:
             categories.extend(interactions)
 
-
         for category in categories:
             final_cat_dict[category] = {
                 'dropped_categories': hier_category_dict.get(category, None),
