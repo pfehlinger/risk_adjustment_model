@@ -1,6 +1,5 @@
-import logging
 import os
-import yaml
+import json
 import importlib.resources
 
 from pathlib import Path
@@ -315,7 +314,7 @@ class MedicareModel:
         disease_score = 0
         demographic_score = 0
         for cat in categories:
-            for key, value in self.category_definitions['category'].items():
+            for key, value in self.category_definitions.items():
                 if cat == key:
                     weight = self.category_weights[cat][population]
                     score += weight
@@ -501,8 +500,8 @@ class MedicareModel:
         
         for category in category_list:
             dropped_codes = []
-            if category in self.hierarchy_definitions['category'].keys():
-                for remove_category in self.hierarchy_definitions['category'][category]['remove_code']:
+            if category in self.hierarchy_definitions.keys():
+                for remove_category in self.hierarchy_definitions[category]['remove_code']:
                     try:
                         category_list.remove(remove_category)
                     except ValueError:
@@ -638,8 +637,8 @@ class MedicareModel:
             yaml.YAMLError: If there is an error encountered while parsing the 
                             hierarchy definition YAML file.
         """
-        with open(self.data_directory / 'hierarchy_definition.yaml') as file:
-            hierarchy_definitions = yaml.safe_load(file)
+        with open(self.data_directory / 'hierarchy_definition.json') as file:
+            hierarchy_definitions = json.load(file)
         
         return hierarchy_definitions
     
@@ -663,8 +662,8 @@ class MedicareModel:
             yaml.YAMLError: If an error occurs during the parsing of the category 
                             definition YAML file.
         """
-        with open(self.data_directory / 'category_definition.yaml') as file:
-            category_definitions = yaml.safe_load(file)
+        with open(self.data_directory / 'category_definition.json') as file:
+            category_definitions = json.load(file)
         
         return category_definitions
     

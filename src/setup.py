@@ -13,10 +13,7 @@ setup(packages=find_packages(),
     author_email="pjfehlinger@gmail.com",
     url="https://github.com/pfehlinger/risk_adjustment_model",
     license="MIT", 
-    install_requires = [
-        "pandas", 
-        "pyyaml"
-    ],
+    install_requires = [],
     include_package_data=True,
     package_dirc={"": "src"},
     package_data={"reference_data": ["*.yaml", "*.csv", "*.json", '*.txt']},
