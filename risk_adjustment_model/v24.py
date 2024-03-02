@@ -1,9 +1,3 @@
-import pandas as pd
-import logging
-import os
-import yaml
-
-from pathlib import Path
 
 
 CMS_VARIABLES_V24 = {
