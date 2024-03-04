@@ -587,7 +587,7 @@ class MedicareModel:
 
         """
         if not self.year:
-            with importlib.resources.path('risk_adjustment_model/reference_data', 'medicare') as data_dir:
+            with importlib.resources.path('risk_adjustment_model.reference_data', 'medicare') as data_dir:
                 dirs = os.listdir(data_dir / self.version)
                 years = [int(dir) for dir in dirs]
                 max_year = max(years)
@@ -612,7 +612,7 @@ class MedicareModel:
         Raises:
             FileNotFoundError: If the specified version directory or reference data directory does not exist.
         """
-        with importlib.resources.path('risk_adjustment_model/reference_data', 'medicare') as data_dir:
+        with importlib.resources.path('risk_adjustment_model.reference_data', 'medicare') as data_dir:
             data_directory = data_dir / self.version / str(self.model_year)
         
         return data_directory
