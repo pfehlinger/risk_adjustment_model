@@ -17,7 +17,7 @@ setup(packages=find_packages(),
     include_package_data=True,
     # packages=find_packages(include=['risk_adjustment_model', 'risk_adjustment_model.*']),
     # package_dirc={"": "risk_adjustment_model"},
-    package_data={"risk_adjustment_model/reference_data": ["*.yaml", "*.csv", "*.json", '*.txt']},
+    # package_data={"risk_adjustment_model/reference_data": ["*.yaml", "*.csv", "*.json", '*.txt']},
     classifiers=[
         "Programming Language :: Python :: 3",
         "License :: OSI Approved :: MIT Software License",
