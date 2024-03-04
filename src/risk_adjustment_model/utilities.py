@@ -5,13 +5,10 @@ def determine_age(age: int, dob: str) -> int:
     if dob == None and age == None:
             raise ValueError('Need a DOB or an Age passed in')
     elif dob:      
-        dob = datetime.strptime(dob, "%Y-%m-%d")
         # PF: What is reference date??
-        reference_date = datetime.strptime(reference_date, "%Y-%m-%d")
+        reference_date = dob = datetime.fromisoformat(dob) # tim try using fromisoformat
 
         # Calculate the age
         age = reference_date.year - dob.year - ((reference_date.month, reference_date.day) < (dob.month, dob.day))
     elif age:
         age = age
-
-    return age
