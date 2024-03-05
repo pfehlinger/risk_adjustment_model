@@ -7,6 +7,7 @@ from risk_adjustment_model.v24 import age_sex_edits_v24, get_disease_interaction
 from risk_adjustment_model.v28 import age_sex_edits_v28, get_disease_interactions_v28, CMS_VARIABLES_V28
 from risk_adjustment_model.utilities import determine_age
 from typing import Union, Optional
+from dataclasses import dataclass
 
 
 class MedicareModel:
@@ -44,8 +45,17 @@ class MedicareModel:
 
     # --- RA Model methods ---
 
-    def score(self, gender: str, orec: str, medicaid: bool, diagnosis_codes=[], age=None, dob=None,
-              population='CNA', verbose=False) -> dict:
+    def score(
+        self,
+        gender: str,
+        orec: str,
+        medicaid: bool,
+        diagnosis_codes=[],
+        age=None,
+        dob=None,
+        population='CNA',
+        verbose=False
+    ) -> dict:
         """
         Determines the risk score for the inputs.
 
@@ -63,117 +73,55 @@ class MedicareModel:
             verbose (bool): Indicates if trimmed output or full output is desired
 
         Returns:
-            dict: A dictionary containing the score information. If verbose is False the output looks like
-            'cn_aged': {
-                'score_raw': 123,
-                'score': 123,
-                'category_details': {
-                    'HCC1': {'weight': .5, 'diagnosis_codes': ['123', '456']},
-                    'HCC2': {'weight': .5, 'diagnosis_codes': ['123', '456']},
-                },
-                'category_list': ['HCC1', 'HCC2'],
-            },
-            'cn_disabled': {
-                ...
-            } ,  
-            'inputs': {
-                'age': 65,
-                'sex': 'F',
-                'medicaid': False,
-                'disabled': 0,
-                'origds': 0
-            },
-            'model_version': 'v24',
-            'coding_intensity_adjuster': .123,
-            'normalization_factor': .123
-
-            If verbose is True, the output looks like:
-            'beneficiary_score_profile': {
-                'categories': {
-                    'HCC10': {
-                        'weight': 0.6,
-                        'type': 'disease',
-                        'category_number': 10,
-                        'category_description': 'Lymphoma and Other Cancers',
-                        'dropped_categories': None,
-                        'diagnosis_map': ['C8175', 'C8286', 'C9590']
-                    },
-                    'HCC55': {
-                        'weight': 0.6,
-                        'type': 'disease',
-                        'category_number': 55,
-                        'category_description': 'Substance Use Disorder, Moderate/Severe, or Substance Use with Complications',
-                        'dropped_categories': None,
-                        'diagnosis_map': ['F1114', 'F13988']
-                    },
-                    'HCC72': {
-                        'weight': 0.6,
-                        'type': 'disease',
-                        'category_number': 72,
-                        'category_description': 'Spinal Cord Disorders/Injuries',
-                        'dropped_categories': None,
-                        'diagnosis_map': ['S14157S']
-                    },
-                    'F65_69': {
-                        'weight': 0.6,
-                        'type': 'demographic',
-                        'category_number': None,
-                        'category_description': 'Female, 65 to 69 Years Old'
-                    }
-                },
-                'score': 10.799999999999997,
-                'disease_score': 10.199999999999998,
-                'demographic_score': 0.6
-                },
-                'CN_Disabled': {
-                    ...
-                },
-            inputs: {
-                'age': 65,
-                'sex': 'F',
-                'medicaid': False,
-                'disabled': 0,
-                'origds': 0,
-                'diagnosis_codes: [123, 456]
-            },
-            'risk_model_age': 66,
-            'model_version': 'v24',
-            'year': 2024,
-            'coding_intensity_adjuster': .123,
-            'normalization_factor': .123,
+            dict: A dictionary containing the score information.
         """
-        #PF: Add validation that one of age or DOB is provided
-
+        # Add validation that one of age or DOB is provided
         risk_model_age = determine_age(age, dob)
 
-        if population == 'NE':
+        if population == 'NE': # Tim why just NE? what does NE mean?
             risk_model_population = self._get_new_enrollee_population(risk_model_age, orec, medicaid)
         else:
             risk_model_population = population
 
-        output_dict = {
-            'inputs':  {
-                'gender': gender,
-                'orec': orec,
-                'medicaid': medicaid,
-                'age': age,
-                'dob': dob,
-                'diagnosis_codes': diagnosis_codes,
-                'year': self.year,
-                'population': population
-            },
-            'risk_model_age': risk_model_age,
-            'risk_model_population': risk_model_population,
-            'model_version': self.version,
-            'model_year': self.model_year,
-            'coding_intensity_adjuster': self.coding_intesity_adjuster,
-            'normalization_factor': self.normalization_factor
-        }
+        @dataclass
+        class OutputDict:
+            gender: str
+            orec: str
+            medicaid: bool
+            age: int
+            dob: str
+            diagnosis_codes: list
+            year: int
+            population: str
+            risk_model_age: int
+            risk_model_population: str
+            model_version: str
+            model_year: int
+            coding_intensity_adjuster: float
+            normalization_factor: float
+
+        output_dict = OutputDict(
+            gender=gender,
+            orec=orec,
+            medicaid=medicaid,
+            age=age,
+            dob=dob,
+            diagnosis_codes=diagnosis_codes,
+            year=self.year,
+            population=population,
+            risk_model_age=risk_model_age,
+            risk_model_population=risk_model_population,
+            model_version=self.version,
+            model_year=self.model_year,
+            coding_intensity_adjuster=self.coding_intesity_adjuster,
+            normalization_factor=self.normalization_factor
+        )
 
         categories_dict, category_list = self.get_categories(risk_model_age, gender, orec, medicaid, diagnosis_codes, risk_model_population)
         combine_dict = {}
         score_dict = self.get_weights(category_list, risk_model_population)
-        # now combine the dictionaries to make output
+        
+        # Combine the dictionaries to make output
         for key, value in score_dict['categories'].items():
             if categories_dict.get(key):
                 value.update(categories_dict.get(key))
@@ -587,7 +535,7 @@ class MedicareModel:
 
         """
         if not self.year:
-            with importlib.resources.path('reference_data', 'medicare') as data_dir:
+            with importlib.resources.path('risk_adjustment_model.reference_data', 'medicare') as data_dir:
                 dirs = os.listdir(data_dir / self.version)
                 years = [int(dir) for dir in dirs]
                 max_year = max(years)
@@ -612,7 +560,7 @@ class MedicareModel:
         Raises:
             FileNotFoundError: If the specified version directory or reference data directory does not exist.
         """
-        with importlib.resources.path('reference_data', 'medicare') as data_dir:
+        with importlib.resources.path('risk_adjustment_model.reference_data', 'medicare') as data_dir:
             data_directory = data_dir / self.version / str(self.model_year)
         
         return data_directory
