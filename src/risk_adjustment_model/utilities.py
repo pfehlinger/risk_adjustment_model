@@ -12,3 +12,5 @@ def determine_age(age: int, dob: str) -> int:
         age = reference_date.year - dob.year - ((reference_date.month, reference_date.day) < (dob.month, dob.day))
     elif age:
         age = age
+
+    return age
