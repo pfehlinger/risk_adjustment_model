@@ -5,7 +5,8 @@ import importlib.resources
 from pathlib import Path
 from src.risk_adjustment_model.v24 import age_sex_edits_v24, get_disease_interactions_v24, CMS_VARIABLES_V24
 from src.risk_adjustment_model.v28 import age_sex_edits_v28, get_disease_interactions_v28, CMS_VARIABLES_V28
-from src.risk_adjustment_model.utilities import determine_age
+from src.risk_adjustment_model.utilities import determine_age, determine_age_band
+from src.risk_adjustment_model.output import ScoringResults
 from typing import Union, Optional
 from dataclasses import dataclass
 
@@ -83,24 +84,7 @@ class MedicareModel:
         else:
             risk_model_population = population
 
-        @dataclass
-        class OutputDict:
-            gender: str
-            orec: str
-            medicaid: bool
-            age: int
-            dob: str
-            diagnosis_codes: list
-            year: int
-            population: str
-            risk_model_age: int
-            risk_model_population: str
-            model_version: str
-            model_year: int
-            coding_intensity_adjuster: float
-            normalization_factor: float
-
-        output_dict = OutputDict(
+        output_dict = ScoringResults(
             gender=gender,
             orec=orec,
             medicaid=medicaid,
@@ -114,7 +98,8 @@ class MedicareModel:
             model_version=self.version,
             model_year=self.model_year,
             coding_intensity_adjuster=self.coding_intesity_adjuster,
-            normalization_factor=self.normalization_factor
+            normalization_factor=self.normalization_factor,
+            beneficiary_score_profile={}
         )
 
         categories_dict, category_list = self.get_categories(risk_model_age, gender, orec, medicaid, diagnosis_codes, risk_model_population)
@@ -135,7 +120,7 @@ class MedicareModel:
         score_dict['category_details'] = combine_dict
         score_dict['category_list'] = category_list
         del score_dict['categories']
-        output_dict['beneficiary_score_profile'] = score_dict
+        output_dict.beneficiary_score_profile = score_dict
 
         return output_dict
 
@@ -187,6 +172,8 @@ class MedicareModel:
         # DO I NEED TO DO SOMETHING WITH VERSION
         demo_cats = []
         disabled, orig_disabled = self._determine_disabled(age, orec)
+        if version == 'v24':
+            demo_cats.append(get_demographic_cats_v24)
         demo_cats.append(self._get_demographic_cats(age, gender, population))
         demo_int = self._get_demographic_interactions(gender, orig_disabled)
         if demo_int:
@@ -333,61 +320,6 @@ class MedicareModel:
         
         return disabled, orig_disabled
 
-    def _get_demographic_cats(self, age, gender, population):
-        """
-        Determine the demographic category based on age and gender.
-
-        Args:
-            age (int): The age of the individual.
-            gender (str): The gender of the individual ('Male', 'Female', etc.).
-
-        Returns:
-            str: The demographic category of the individual.
-
-        Notes:
-            This function determines the demographic category of an individual based on their age and gender. 
-            It assigns individuals to predefined demographic categories, such as age and gender bands, 
-            defined as 'F0_34', 'M35_44', etc. The categories are hard-coded within the function.
-            
-            The function iterates through the predefined demographic categories and checks if the provided 
-            age falls within the range specified for each category. Once a matching category is found, 
-            it returns that category.
-        """
-        # PF: Might want to refactor to use yaml/json with demographic type to get the categories
-        if population[:2] == 'NE':
-            demo_category_ranges = [
-                '0_34', '35_44', '45_54', '55_59', '60_64',
-                '65', '66', '67', '68', '69', '70_74', 
-                '75_79', '80_84', '85_89', '90_94', '95_GT',
-            ]
-        else:
-            demo_category_ranges = [
-                '0_34', '35_44', '45_54', '55_59', '60_64',
-                '65_69', '70_74', '75_79', '80_84', '85_89', 
-                '90_94', '95_GT',
-            ]
-        
-        for age_range in demo_category_ranges:
-            age_band = age_range.replace(gender, '').split('_') 
-            lower, upper = 0, 999
-            if len(age_band) == 1:
-                lower = int(age_band[0])
-                upper = lower + 1
-            elif age_band[1] == 'GT':
-                lower = int(age_band[0])
-            else: 
-                lower = int(age_band[0])
-                upper = int(age_band[1]) + 1
-            if lower <= age < upper:
-                demographic_category_range = age_range
-                break
-
-        if population[:2] == 'NE':
-            demographic_category = f'NE{gender}{demographic_category_range}'
-        else:
-            demographic_category = f'{gender}{demographic_category_range}'
-
-        return demographic_category
 
     def _get_demographic_interactions(self, gender, orig_disabled):
 

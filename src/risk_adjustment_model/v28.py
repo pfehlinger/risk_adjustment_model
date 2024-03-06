@@ -1,3 +1,4 @@
+from src.risk_adjustment_model.utilities import determine_age_band
 
 CMS_VARIABLES_V28 = {
     'coding_intensity_adjuster': 0.059,
@@ -81,7 +82,6 @@ def get_disease_interactions_v28(categories: list) -> list:
     ulcer_v28 = False
     ulcer_v28_list = ['HCC379', 'HCC380', 'HCC381', 'HCC382']
     
-    
     for category in cancer_list:
         if category in categories:
             cancer = True
@@ -143,3 +143,46 @@ def get_disease_interactions_v28(categories: list) -> list:
     interaction_list = [key for key, value in interactions.items() if value]
 
     return interaction_list
+
+def _get_demographic_cats(self, age, gender, population):
+    """
+    Determine the demographic category based on age and gender.
+
+    Args:
+        age (int): The age of the individual.
+        gender (str): The gender of the individual ('Male', 'Female', etc.).
+
+    Returns:
+        str: The demographic category of the individual.
+
+    Notes:
+        This function determines the demographic category of an individual based on their age and gender. 
+        It assigns individuals to predefined demographic categories, such as age and gender bands, 
+        defined as 'F0_34', 'M35_44', etc. The categories are hard-coded within the function.
+        
+        The function iterates through the predefined demographic categories and checks if the provided 
+        age falls within the range specified for each category. Once a matching category is found, 
+        it returns that category.
+    """
+    # PF: Might want to refactor to use yaml/json with demographic type to get the categories
+    if population[:2] == 'NE':
+        demo_category_ranges = [
+            '0_34', '35_44', '45_54', '55_59', '60_64',
+            '65', '66', '67', '68', '69', '70_74', 
+            '75_79', '80_84', '85_89', '90_94', '95_GT',
+        ]
+    else:
+        demo_category_ranges = [
+            '0_34', '35_44', '45_54', '55_59', '60_64',
+            '65_69', '70_74', '75_79', '80_84', '85_89', 
+            '90_94', '95_GT',
+        ]
+    
+    demographic_category_range = determine_age_band(age, demo_category_ranges)
+
+    if population[:2] == 'NE':
+        demographic_category = f'NE{gender}{demographic_category_range}'
+    else:
+        demographic_category = f'{gender}{demographic_category_range}'
+
+    return demographic_category
