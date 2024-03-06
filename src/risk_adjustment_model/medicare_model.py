@@ -3,9 +3,9 @@ import json
 import importlib.resources
 
 from pathlib import Path
-from risk_adjustment_model.v24 import age_sex_edits_v24, get_disease_interactions_v24, CMS_VARIABLES_V24
-from risk_adjustment_model.v28 import age_sex_edits_v28, get_disease_interactions_v28, CMS_VARIABLES_V28
-from risk_adjustment_model.utilities import determine_age
+from src.risk_adjustment_model.v24 import age_sex_edits_v24, get_disease_interactions_v24, CMS_VARIABLES_V24
+from src.risk_adjustment_model.v28 import age_sex_edits_v28, get_disease_interactions_v28, CMS_VARIABLES_V28
+from src.risk_adjustment_model.utilities import determine_age
 from typing import Union, Optional
 from dataclasses import dataclass
 
@@ -535,7 +535,7 @@ class MedicareModel:
 
         """
         if not self.year:
-            with importlib.resources.path('risk_adjustment_model.reference_data', 'medicare') as data_dir:
+            with importlib.resources.path('src.risk_adjustment_model.reference_data', 'medicare') as data_dir:
                 dirs = os.listdir(data_dir / self.version)
                 years = [int(dir) for dir in dirs]
                 max_year = max(years)
@@ -560,7 +560,7 @@ class MedicareModel:
         Raises:
             FileNotFoundError: If the specified version directory or reference data directory does not exist.
         """
-        with importlib.resources.path('risk_adjustment_model.reference_data', 'medicare') as data_dir:
+        with importlib.resources.path('src.risk_adjustment_model.reference_data', 'medicare') as data_dir:
             data_directory = data_dir / self.version / str(self.model_year)
         
         return data_directory
