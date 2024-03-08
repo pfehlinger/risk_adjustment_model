@@ -1,27 +1,19 @@
 import os
 import json
 import importlib.resources
+import datetime
 
 from pathlib import Path
-from src.risk_adjustment_model.v24 import age_sex_edits_v24, get_disease_interactions_v24, CMS_VARIABLES_V24
-from src.risk_adjustment_model.v28 import age_sex_edits_v28, get_disease_interactions_v28, CMS_VARIABLES_V28
-from src.risk_adjustment_model.utilities import determine_age, determine_age_band
+from src.risk_adjustment_model.utilities import determine_age_band
 from src.risk_adjustment_model.output import ScoringResults
 from typing import Union, Optional
-from dataclasses import dataclass
 
 
-class MedicareModel:
+class BaseMedicareModel:
     """
-    General idea is that 
+    This is the foundation for Medicare Models. It is not to be called directly. It loads all relevant information for that model
+    and year as class attributes.
 
-    Logging file added
-    Set up local paths to import files
-    Write out vision for how to set up a new model (this then would help me structure codebase)
-    Make a test dataset
-    Work on test infrastructure
-    Work on having this be a docker installed componet
-    Figure out flask architecture
 
     How this class works:
     1. Instantiate the class with set up information: model version, year optional if same model version has multiple years and differences
@@ -44,7 +36,7 @@ class MedicareModel:
         self.coding_intesity_adjuster = self._get_coding_intensity_adjuster()
         self.normalization_factor = self._get_normalization_factor()
 
-    # --- RA Model methods ---
+    # --- General Model methods that should be inherited and used as is ---
 
     def score(
         self,
@@ -77,11 +69,12 @@ class MedicareModel:
             dict: A dictionary containing the score information.
         """
         # Add validation that one of age or DOB is provided
-        risk_model_age = determine_age(age, dob)
+        risk_model_age = self._determine_age(age, dob)
 
         if population == 'NE': # Tim why just NE? what does NE mean?
             risk_model_population = self._get_new_enrollee_population(risk_model_age, orec, medicaid)
         else:
+            # CNA, CND, CFA, CFD, CPA, CPD
             risk_model_population = population
 
         output_dict = ScoringResults(
@@ -124,7 +117,15 @@ class MedicareModel:
 
         return output_dict
 
-    def get_categories(self, age: int, gender: str, orec: str, medicaid: bool, diagnosis_codes: Union[str, list], population: str) -> tuple[dict[str, Union[dict, list]], list]:
+    def get_categories(
+        self, 
+        age: int, 
+        gender: str, 
+        orec: str, 
+        medicaid: bool, 
+        diagnosis_codes: Union[str, list], 
+        population: str
+    ) -> tuple[dict[str, Union[dict, list]], list]:
         """
         Get categories based on demographic information and diagnosis codes.
 
@@ -154,9 +155,9 @@ class MedicareModel:
             Finally, it combines the demographic and disease-specific categories into a list 
             of category keys and returns both the dictionary of categories and the list of keys.
         """
-        demo_categories = self.get_demographic_cats(self.version, age, gender, orec, medicaid, population)
+        demo_categories = self.determine_demographic_cats(self.version, age, gender, orec, medicaid, population)
         if diagnosis_codes:
-            categories_dict = self.get_disease_categories(gender, age, diagnosis_codes)
+            categories_dict = self.determine_disease_categories(gender, age, diagnosis_codes)
         else:
             categories_dict = {}
 
@@ -164,66 +165,6 @@ class MedicareModel:
         category_list.extend(demo_categories)
 
         return categories_dict, category_list
-
-    def get_demographic_cats(self, version, age, gender, orec, medicaid, population):
-        """Need to do the static typing stuff above for gender, age, orec"""
-        # disabled, originally disabled variables
-        # Need to look into this more if it is right
-        # DO I NEED TO DO SOMETHING WITH VERSION
-        demo_cats = []
-        disabled, orig_disabled = self._determine_disabled(age, orec)
-        if version == 'v24':
-            demo_cats.append(get_demographic_cats_v24)
-        demo_cats.append(self._get_demographic_cats(age, gender, population))
-        demo_int = self._get_demographic_interactions(gender, orig_disabled)
-        if demo_int:
-            demo_cats.append(demo_int)
-        
-        # how to handle new enrollee flag
-        # demo_cats.append(
-
-        # There are four buckets for NE for the 
-        # Non-Medicaid & Non-OriginallyDisabled
-        # Medicaid & Non-Originally Disabled
-        # Non-Medicaid & Originally Disabled
-        # Medicaid & Originally Disabled
-
-        # print(disabled)
-        # print(orec)
-
-        # demo_cats.append(_get_demographic_cats)
-        # _get_new_enrollee_demographic_cats
-        # _get_demographic_interactions
-
-        return demo_cats
-    
-    def get_disease_categories(self, gender, age, diagnosis_codes) -> dict:
-        # This needs to return a dictionary and contain diagnosis that triggered it
-        # Don't want to be passing in dictionaires so instead need to maintain one and pass
-        # in lists
-        # Or refactor so each method returns both a dictionary and a list
-        # Need age sex edits too
-        final_cat_dict = {}
-        category_dict = self._get_disease_categories(gender, age, diagnosis_codes)
-        categories = [key for key in category_dict]
-        hier_category_dict = self._apply_hierarchies(categories)
-        categories = [key for key in hier_category_dict]
-        category_count = self._get_payment_count_categories(categories)
-        if category_count:
-            categories.append(category_count)
-        interactions_dict = self._get_disease_interactions(self.version, categories)
-        interactions = [key for key in interactions_dict]
-        if interactions:
-            categories.extend(interactions)
-
-        for category in categories:
-            final_cat_dict[category] = {
-                'dropped_categories': hier_category_dict.get(category, None),
-                'diagnosis_map': category_dict.get(category, None),
-            }
-        
-        # This needs to be a dict of category, dropped cateogries, diagnosis map
-        return final_cat_dict
     
     def get_weights(self, categories: list, population: str):
         """
@@ -253,16 +194,12 @@ class MedicareModel:
                 if cat == key:
                     weight = self.category_weights[cat][population]
                     score += weight
-                        
                     if value['type'] == 'disease' or value['type'] == 'disease_interaction':
                         disease_score += weight
                     if value['type'] == 'demographic':
                         demographic_score += weight
-                    # PF: Do I want category_number not to exist for demo cats? Or should it be NA?
-                    # Do I want get_weights to make this dictionary? Probably not.
                     category_dict[key] = {
                         'weight': weight,
-                        # have this come from category_yaml
                         'type': value['type'],
                         'category_number': value.get('number', None),
                         'category_description': value['descr'],
@@ -278,89 +215,37 @@ class MedicareModel:
         cat_output['demographic_score'] = self._apply_norm_factor_coding_adj(demographic_score)
        
         return cat_output
-
-    # --- RA Model helper methods ---
-
-    def _determine_disabled(self, age, orec):
+    
+    def determine_disease_categories(self, gender, age, diagnosis_codes) -> dict:
         """
-        Determine disability status and original disability status based on age and original entitlement reason code.
+        This considers mapping of disease categories and applying hierarchies
 
-        Args:
-            age (int): The age of the individual.
-            orec (str): The original reason for entitlement category.
-
-        Returns:
-            tuple: A tuple containing two elements:
-                - A flag indicating if the individual is disabled (1 if disabled, 0 otherwise).
-                - A flag indicating the original disability status (1 if originally disabled, 0 otherwise).
-
-        Notes:
-            This function determines the disability status of an individual based on their age and original entitlement 
-            reason code (orec). If the individual is under 65 years old and orec is not '0', they are considered disabled.
-            Additionally, if orec is '1' or '3' and the individual is not disabled, they are marked as originally disabled.
-
-            Original disability status is determined based on whether the individual was initially considered disabled, 
-            regardless of their current status.
-
-            Reference: https://github.com/yubin-park/hccpy/blob/master/hccpy/_AGESEXV2.py
         """
-        if age < 65 and orec != '0':
-            disabled = 1
-        else:
-            disabled = 0
+        final_cat_dict = {}
+        category_dict, categories = self._get_disease_categories(gender, age, diagnosis_codes)
+        hier_category_dict, categories = self._apply_hierarchies(categories)
+        interactions = self._determine_disease_interactions(categories)
+        if interactions:
+            categories.extend(interactions)
 
-        # Should it be this: orig_disabled = (orec == '1') * (disabled == 0)
-        if orec in ('1', '3') and disabled == 0:
-            orig_disabled = 1
-        else:
-            orig_disabled = 0
-
-        # Don't know if I want the elig part here
-        # https://github.com/yubin-park/hccpy/blob/master/hccpy/_AGESEXV2.py
+        for category in categories:
+            final_cat_dict[category] = {
+                'dropped_categories': hier_category_dict.get(category, None),
+                'diagnosis_map': category_dict.get(category, None),
+            }
         
-        return disabled, orig_disabled
-
-
-    def _get_demographic_interactions(self, gender, orig_disabled):
-
-        demo_interaction = None
-        if gender == 'F' and orig_disabled == 1:
-            demo_interaction = 'OriginallyDisabled_Female'
-        elif gender == 'M' and orig_disabled == 1:
-            demo_interaction = 'OriginallyDisabled_Male'
-
-        return demo_interaction
-
-    def _get_new_enrollee_population(self, age, orec, medicaid):
-        """
-        NE_ORIGDS       = (AGEF>=65)*(OREC='1');
-        NMCAID_NORIGDIS = (NEMCAID <=0 and NE_ORIGDS <=0);
-        MCAID_NORIGDIS  = (NEMCAID > 0 and NE_ORIGDS <=0);
-        NMCAID_ORIGDIS  = (NEMCAID <=0 and NE_ORIGDS > 0);
-        MCAID_ORIGDIS   = (NEMCAID > 0 and NE_ORIGDS > 0);
-        """
-        if age >= 65 and orec == '1':
-            ne_originally_disabled = True
-        else:
-            ne_originally_disabled = False
-        if not ne_originally_disabled and not medicaid:
-            ne_population = 'NE_NMCAID_NORIGDIS'
-        if not ne_originally_disabled and medicaid:
-            ne_population = 'NE_MCAID_NORIGDIS'
-        if ne_originally_disabled and not medicaid:
-            ne_population = 'NE_NMCAID_ORIGDIS'
-        if ne_originally_disabled and medicaid:
-            ne_population = 'NE_MCAID_ORIGDIS'
-
-        return ne_population      
-
+        return final_cat_dict
+    
     def _get_disease_categories(self, gender, age, diagnosis_codes):
-
+        """
+        """
         if isinstance(diagnosis_codes, list):
             dx_categories = {diag:self.diag_to_category_map[diag] for diag in diagnosis_codes if diag in self.diag_to_category_map}
         else:
             dx_categories = {diagnosis_codes:self.diag_to_category_map[diagnosis_codes]}
-        # dx_categories['category_nbr'] = dx_categories.apply(lambda x: age_sex_edits(gender, age, x['dx_code_no_decimal'], x['category_nbr']), axis=1)
+        
+        for diagnosis_code, category in dx_categories.items():
+            dx_categories[diagnosis_code] = self._age_sex_edits(gender, age, diagnosis_code, category)
 
         cat_dict = {}
         all_cats = [value for catlist in dx_categories.values() for value in catlist]
@@ -369,12 +254,19 @@ class MedicareModel:
             dx_codes = [key for key, value in dx_categories.items() if cat in value]
             cat_dict[cat] = dx_codes
         
-        return cat_dict
+        return cat_dict, unique_cats
+    
+    def _apply_hierarchies(self, categories: set) -> dict:
+        """
+        Takes in a unique set of categories and removes categories that fall into
+        hierarchies as outlined in the hierarchy_definition file.
 
-    def _apply_hierarchies(self, categories: list):
-        # Don't know if I want this, copying the list
-        # PF: This is wrong, see v28 HCC21, HCC22, HCC23
-        category_list = categories[:]
+        Returns:
+            dict containing the remaining categories and any categories "dropped"
+            by that category.
+
+        """
+        category_list = list(categories)
         categories_dict = {}
         dropped_codes_total = []
         
@@ -399,29 +291,185 @@ class MedicareModel:
             if category not in dropped_codes_total:
                 categories_dict[category] = None
 
-        return categories_dict
+        return categories_dict, category_list
 
-    def _get_payment_count_categories(self, categories: list):
-        category_count = len(categories)
-        category = None
-        if category_count > 9:
-            category = 'D10P'
-        elif category_count > 0:
-            category = f'D{category_count}'
+    def determine_demographic_cats(self, version, age, gender, orec, medicaid, population) -> list:
+        """Need to do the static typing stuff above for gender, age, orec"""
+        # NEED TO DO LTIMEDICAID
+        demo_cats = []
+        disabled, orig_disabled = self._determine_disabled(age, orec)
+        demo_cats.append(self._determine_demographic_cats(age, gender, population))
+        demo_int = self._get_demographic_interactions(gender, orig_disabled)
+        if demo_int:
+            demo_cats.append(demo_int)
 
+        return demo_cats
+    
+    # --- Methods to overwrite ---
+
+    def _determine_demographic_cats(self, age, gender, population):
+        """
+        This may need to be overwritten depending on the mechanices of the model.
+        Ranges may change, the population may change, etc.
+        """
+        if population[:2] == 'NE':
+            demo_category_ranges = [
+                '0_34', '35_44', '45_54', '55_59', '60_64',
+                '65', '66', '67', '68', '69', '70_74', 
+                '75_79', '80_84', '85_89', '90_94', '95_GT',
+            ]
+        else:
+            demo_category_ranges = [
+                '0_34', '35_44', '45_54', '55_59', '60_64',
+                '65_69', '70_74', '75_79', '80_84', '85_89', 
+                '90_94', '95_GT',
+            ]
+        
+        demographic_category_range = determine_age_band(age, demo_category_ranges)
+
+        if population[:2] == 'NE':
+            demographic_category = f'NE{gender}{demographic_category_range}'
+        else:
+            demographic_category = f'{gender}{demographic_category_range}'
+
+        return demographic_category
+
+    def _get_demographic_interactions(self, gender, orig_disabled):
+        """
+        Depending on model this may change
+        """
+        demo_interaction = None
+        if gender == 'F' and orig_disabled == 1:
+            demo_interaction = 'OriginallyDisabled_Female'
+        elif gender == 'M' and orig_disabled == 1:
+            demo_interaction = 'OriginallyDisabled_Male'
+
+        return demo_interaction
+    
+    def _get_new_enrollee_population(self, age, orec, medicaid):
+        """
+        Depending on the model, new enrollee population may be identified
+        differently. This default is the CMS Community Model
+
+        NE_ORIGDS       = (AGEF>=65)*(OREC='1');
+        NMCAID_NORIGDIS = (NEMCAID <=0 and NE_ORIGDS <=0);
+        MCAID_NORIGDIS  = (NEMCAID > 0 and NE_ORIGDS <=0);
+        NMCAID_ORIGDIS  = (NEMCAID <=0 and NE_ORIGDS > 0);
+        MCAID_ORIGDIS   = (NEMCAID > 0 and NE_ORIGDS > 0);
+        """
+        if age >= 65 and orec == '1':
+            ne_originally_disabled = True
+        else:
+            ne_originally_disabled = False
+        if not ne_originally_disabled and not medicaid:
+            ne_population = 'NE_NMCAID_NORIGDIS'
+        if not ne_originally_disabled and medicaid:
+            ne_population = 'NE_MCAID_NORIGDIS'
+        if ne_originally_disabled and not medicaid:
+            ne_population = 'NE_NMCAID_ORIGDIS'
+        if ne_originally_disabled and medicaid:
+            ne_population = 'NE_MCAID_ORIGDIS'
+
+        return ne_population
+
+    def _age_sex_edits(self, gender, age, diagnosis_code, category) -> str:
+        """
+        Placeholder method that should be overwritten by each specific model version class.
+        The expectation is the _age_sex_edits method will return a category for the
+        gender, age, diagnosis code, and category passed in.
+        """
         return category
 
-    def _get_disease_interactions(self, version: str, categories: list) -> list:
-        """Need to make this do something with version"""
-        interaction_list = []
-        if version == 'v24':
-            interaction_list = get_disease_interactions_v24(categories)
-        elif version == 'v28':
-            interaction_list = get_disease_interactions_v28(categories)
+    def _determine_disease_interactions(self, categories: set) -> set:
+        """
+        Placeholder method that should be overwritten by each specific model version class.
+        The expectation is that the _determine_interactions method will take in at least a set of
+        unique categories and return a set of unique categories.
 
-        return interaction_list                                             
+        This can be used for any "category" related calculations: payment count variables
+        disabled interactions, disease interactions
+        """
+        return categories
+    
+    def _get_coding_intensity_adjuster(self) -> float:
+        """
+        This should get overwritten based on model version and year.
+        
+        Returns:
+            float: The coding intensity adjuster.
+        """
+        coding_intensity_adjuster = 1
+        
+        return coding_intensity_adjuster
+    
+    def _get_normalization_factor(self) -> float:
+        """
+        This should get overwritten based on model version and year.
+        
+        Returns:
+            float: The normalization factor.
+        """
+        normalization_factor = 1
 
-    # --- Helper methods ---
+        return normalization_factor
+    
+    # --- Helper methods which should not be overwritten ---
+
+    def _determine_disabled(self, age, orec):
+        """
+        Determine disability status and original disability status based on age and original entitlement reason code.
+
+        Args:
+            age (int): The age of the individual.
+            orec (str): The original reason for entitlement category.
+
+        Returns:
+            tuple: A tuple containing two elements:
+                - A flag indicating if the individual is disabled (1 if disabled, 0 otherwise).
+                - A flag indicating the original disability status (1 if originally disabled, 0 otherwise).
+
+        Notes:
+            This function determines the disability status of an individual based on their age and original entitlement 
+            reason code (orec). If the individual is under 65 years old and orec is not '0', they are considered disabled.
+            Additionally, if orec is '1' or '3' and the individual is not disabled, they are marked as originally disabled.
+
+            Original disability status is determined based on whether the individual was initially considered disabled, 
+            regardless of their current status.
+        """
+        if age < 65 and orec != '0':
+            disabled = 1
+        else:
+            disabled = 0
+
+        # Should it be this: orig_disabled = (orec == '1') * (disabled == 0)
+        if orec in ('1', '3') and disabled == 0:
+            orig_disabled = 1
+        else:
+            orig_disabled = 0
+        
+        return disabled, orig_disabled
+
+    def _determine_age(self, age: int, dob: str) -> int:
+        """
+        This code is meant to address two design considerations:
+        1.  Date of birth (DOB) is PHI, thus the code allows for either age or DOB to create flexibility
+            around the handling of PHI. 
+        2.  The CMS Risk Adjustment Model uses age as of February 1st of the payment year. Thus if DOB
+            is passed in, age needs to be computed relative to that date.
+
+        It checks that one of DOB or age is passed in, then determines age if DOB is given. If age is given
+        it returns that age and assumes that is the correct age as of February 1st of the payment year.
+        
+        """
+        if dob == None and age == None:
+                raise ValueError('Need a DOB or an Age passed in')
+        elif dob:      
+            reference_date = datetime.fromisoformat(f'{self.model_year}-02-01')
+            age = reference_date.year - dob.year - ((reference_date.month, reference_date.day) < (dob.month, dob.day))
+        elif age:
+            age = age
+
+        return age
 
     def _apply_norm_factor_coding_adj(self, score: float) -> float:
         return round(
@@ -450,16 +498,9 @@ class MedicareModel:
         even if the categories do not change, weights, diagnosis code mappings, etc. can change.
         Therefore, to account for this, a year can be passed in to specify which mappings and weights
         to use. If nothing is passed in, the code will by default use the most recent valid year.
-        This is the purpose of this code.
 
         Returns:
             int: The model year.
-
-        Notes:
-            This function retrieves the model year based on the version provided. 
-            If a specific year is not provided, it fetches the latest available year 
-            from the reference data directory corresponding to the version. If a year 
-            is provided, it returns that year instead.
 
         Raises:
             FileNotFoundError: If the specified version directory or reference data 
@@ -482,15 +523,6 @@ class MedicareModel:
 
         Returns:
             Path: The directory path to the reference data.
-
-        Notes:
-            This function constructs the directory path to the reference data for the Medicare model 
-            based on the specified version and model year. It utilizes importlib.resources to access 
-            the resources directory containing the Medicare data. It then combines the version and 
-            model year to form the appropriate directory path. 
-
-        Raises:
-            FileNotFoundError: If the specified version directory or reference data directory does not exist.
         """
         with importlib.resources.path('src.risk_adjustment_model.reference_data', 'medicare') as data_dir:
             data_directory = data_dir / self.version / str(self.model_year)
@@ -499,23 +531,10 @@ class MedicareModel:
         
     def _get_hierarchy_definitions(self) -> dict:
         """
-        Retrieve the hierarchy definitions from a YAML file.
+        Retrieve the hierarchy definitions from a JSON file.
 
         Returns:
             dict: A dictionary containing the hierarchy definitions.
-
-        Notes:
-            This function reads the hierarchy definitions from a YAML file located 
-            in the data directory. It loads the YAML content using PyYAML's 
-            safe_load() function to convert it into a Python dictionary format.
-            The hierarchy definitions typically represent the structure and 
-            relationships within a hierarchical dataset.
-
-        Raises:
-            FileNotFoundError: If the hierarchy definition YAML file is not found 
-                            in the specified data directory.
-            yaml.YAMLError: If there is an error encountered while parsing the 
-                            hierarchy definition YAML file.
         """
         with open(self.data_directory / 'hierarchy_definition.json') as file:
             hierarchy_definitions = json.load(file)
@@ -524,23 +543,10 @@ class MedicareModel:
     
     def _get_category_definitions(self) -> dict:
         """
-        Retrieve category definitions from a YAML file.
+        Retrieve category definitions from a JSON file.
 
         Returns:
             dict: A dictionary containing the category definitions.
-
-        Notes:
-            This function reads the category definitions from a YAML file located 
-            in the data directory. It utilizes PyYAML's safe_load() function to 
-            parse the YAML content into a Python dictionary format.
-            Category definitions typically define various categories and their 
-            attributes or properties within a dataset.
-
-        Raises:
-            FileNotFoundError: If the category definition YAML file is not found 
-                            in the specified data directory.
-            yaml.YAMLError: If an error occurs during the parsing of the category 
-                            definition YAML file.
         """
         with open(self.data_directory / 'category_definition.json') as file:
             category_definitions = json.load(file)
@@ -549,28 +555,17 @@ class MedicareModel:
     
     def _get_diagnosis_code_to_category_mapping(self) -> dict:
         """
-        Retrieve diagnosis code to category mappings from a text file.
+        Retrieve diagnosis code to category mappings from a text file. It expects the file
+        to be a csv in the layout of diag,category_nbr.
 
         Returns:
             dict: A dictionary mapping diagnosis codes to categories.
-
-        Notes:
-            This function reads diagnosis code to category mappings from a text file 
-            located in the data directory. Each line in the file is expected to have 
-            a diagnosis code and its corresponding category separated by a delimiter. 
-            It constructs a dictionary where each diagnosis code is mapped to a list 
-            of categories. Categories are typically represented as strings prefixed 
-            with a specific identifier, such as 'HCC'.
-
-        Raises:
-            FileNotFoundError: If the diagnosis code to category mapping text file 
-                            is not found in the specified data directory.
         """
         diag_to_category_map = {}
         with open(self.data_directory / 'diag_to_category_map.txt', 'r') as file:
             for line in file:
                 # Split the line based on the delimiter
-                parts = line.strip().split('|')  # Change ',' to your delimiter
+                parts = line.strip().split('|')
                 diag = parts[0].strip()
                 category = 'HCC' + parts[1].strip()
                 if diag not in diag_to_category_map:
@@ -587,17 +582,11 @@ class MedicareModel:
             dict: A dictionary containing category weights.
 
         Notes:
-            This function reads category weights from a CSV file located in the data 
-            directory. The CSV file is expected to have a header row specifying column 
+            The CSV file is expected to have a header row specifying column 
             names, and subsequent rows representing category weights. Each row should 
             contain values separated by a delimiter, with one column representing 
             the category and others representing different weights. The function constructs 
             a nested dictionary where each category is mapped to a dictionary of weights.
-
-        Raises:
-            FileNotFoundError: If the weights CSV file is not found in the specified 
-                            data directory.
-            ValueError: If there is an issue with parsing weights from the CSV file.
         """
         weights = {}
         col_map = {}
@@ -609,7 +598,6 @@ class MedicareModel:
                     for x, col in enumerate(parts):
                         col_map[col] = x
                 else:
-                    # Assume
                     pop_weight = {}
                     category = parts[col_map['category']]
                     for key in col_map.keys():
@@ -618,47 +606,4 @@ class MedicareModel:
                     weights[category] = pop_weight
         
         return weights
-    
-    def _get_coding_intensity_adjuster(self) -> float:
-        """
-        Get the coding intensity adjuster based on the CMS Model version.
-        
-        Returns:
-            float: The coding intensity adjuster.
-        
-        Notes:
-            This function retrieves the coding intensity adjuster based on the version 
-            specified in the object. It looks up the adjuster value from the respective 
-            CMS_VARIABLES dictionary based on the version provided ('v24' or 'v28'). 
-            If the version is not recognized, the default adjuster value of 1 is returned.
-        """
-        coding_intensity_adjuster = 1
-        if self.version == 'v24':
-            coding_intensity_adjuster = 1 - CMS_VARIABLES_V24['coding_intensity_adjuster']
-        elif self.version == 'v28':
-            coding_intensity_adjuster = 1 - CMS_VARIABLES_V28['coding_intensity_adjuster']
-        
-        return coding_intensity_adjuster
-    
-    def _get_normalization_factor(self) -> float:
-        """
-        Get the normalization factor based on the CMS Model version.
-        
-        Returns:
-            float: The normalization factor.
-        
-        Notes:
-            This function retrieves the normalization factor based on the version 
-            specified in the object. It looks up the adjuster value from the respective 
-            CMS_VARIABLES dictionary based on the version provided ('v24' or 'v28'). 
-            If the version is not recognized, the default normalization value of 1 is returned.
-        """
-        normalization_factor = 1
-        if self.version == 'v24':
-            normalization_factor = CMS_VARIABLES_V24['normalization_factor']
-        elif self.version == 'v28':
-            normalization_factor = CMS_VARIABLES_V28['normalization_factor']
-
-        return normalization_factor
-
 
