@@ -1,5 +1,6 @@
 from dataclasses import dataclass
 
+#PF: This could be refactored to use inheritance or have one per LOB I think
 @dataclass
 class ScoringResults:
     gender: str
@@ -16,5 +17,11 @@ class ScoringResults:
     model_year: int
     coding_intensity_adjuster: float
     normalization_factor: float
-    beneficiary_score_profile: dict
-
+    score_raw: float
+    disease_score_raw: float
+    demographic_score_raw: float
+    score: float
+    disease_score: float
+    demographic_score: float
+    category_list: list
+    category_details: dict
