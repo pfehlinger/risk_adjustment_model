@@ -1,1 +1,1 @@
-name='risk_adjustment_model'
+from .medicare_model import MedicareModel

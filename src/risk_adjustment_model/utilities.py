@@ -1,5 +1,4 @@
-import datetime
-#PF: Is dob a string or datetime being passed in?
+import importlib
 
 
 def determine_age_band(age: int, age_ranges: list):
@@ -22,3 +21,15 @@ def determine_age_band(age: int, age_ranges: list):
             break
     
     return range
+
+
+def nvl(value, default):
+    if value is not None:
+        return value
+    else:
+        return default
+    
+def import_function(module_name, function_name):
+    module = importlib.import_module(module_name, package='src.risk_adjustment_model')
+    func = getattr(module, function_name)
+    return func
