@@ -1,36 +1,42 @@
+from src.risk_adjustment_model.utilities import nvl, determine_age_band
 
 
-CMS_VARIABLES_V24 = {
-    'coding_intensity_adjuster': 0.059,
-    'normalization_factor': 1.146
-}
+def age_sex_edits(gender, age, dx_categories):
+    for diagnosis_code in dx_categories.keys():
+        new_category = _age_sex_edit_1(gender, diagnosis_code)
+        if new_category:
+            dx_categories[diagnosis_code] = new_category
+            break
+        new_category = _age_sex_edit_2(age, diagnosis_code)
+        if new_category:
+            dx_categories[diagnosis_code] = new_category
+            break
+        new_category = _age_sex_edit_3(age, diagnosis_code)
+        if new_category:
+            dx_categories[diagnosis_code] = new_category
+            break
 
-def age_sex_edits_v24(gender, age, dx_code, category):
-        category = _age_sex_edit_1(gender, age, dx_code)
-        category = _age_sex_edit_2(gender, age, dx_code)
-        category = _age_sex_edit_3(gender, age, dx_code)
+    return dx_categories
 
-        return category
-
-def _age_sex_edit_1(gender, age, dx_code):
+def _age_sex_edit_1(gender, dx_code):
     if gender == 'F' and dx_code in ['D66', 'D67']:
-        return '48'
+        return ['HCC48']
 
 
-def _age_sex_edit_2(gender, age, dx_code):
+def _age_sex_edit_2(age, dx_code):
     if age < 18 and dx_code in ['J410', 'J411', 'J418',
                             'J42', 'J430', 'J431', 'J432',
                             'J438', 'J439', 'J440',
                             'J441', 'J449', 'J982', 'J983']:
-        return '112'
+        return ['HCC112']
 
 
-def _age_sex_edit_3(gender, age, dx_code):
+def _age_sex_edit_3(age, dx_code):
     if (age < 6 or age > 18) and dx_code=='F3481':
-        return 'NA'
+        return ['NA']
 
 
-def get_disease_interactions_v24(categories: list) -> list:
+def determine_disease_interactions(categories: list) -> list:
     cancer = False
     cancer_list = ['HCC8', 'HCC9', 'HCC10', 'HCC11', 'HCC12']
     diabetes = False
@@ -110,4 +116,62 @@ def get_disease_interactions_v24(categories: list) -> list:
     }
     interaction_list = [key for key, value in interactions.items() if value]
 
+    category_count = get_payment_count_categories(categories)
+    if category_count:
+        interaction_list.append(category_count)
+
     return interaction_list
+
+
+def get_payment_count_categories(categories: list):
+    """
+    """
+    category_count = len(categories)
+    category = None
+    if category_count > 9:
+        category = 'D10P'
+    elif category_count > 0:
+        category = f'D{category_count}'
+
+    return category
+
+
+def determine_demographic_cats(age, gender, population):
+    """
+    This may need to be overwritten depending on the mechanices of the model.
+    Ranges may change, the population may change, etc.
+    """
+    if population[:2] == 'NE':
+        demo_category_ranges = [
+            '0_34', '35_44', '45_54', '55_59', '60_64',
+            '65', '66', '67', '68', '69', '70_74', 
+            '75_79', '80_84', '85_89', '90_94', '95_GT',
+        ]
+    else:
+        demo_category_ranges = [
+            '0_34', '35_44', '45_54', '55_59', '60_64',
+            '65_69', '70_74', '75_79', '80_84', '85_89', 
+            '90_94', '95_GT',
+        ]
+    
+    demographic_category_range = determine_age_band(age, demo_category_ranges)
+
+    if population[:2] == 'NE':
+        demographic_category = f'NE{gender}{demographic_category_range}'
+    else:
+        demographic_category = f'{gender}{demographic_category_range}'
+
+    return demographic_category
+
+
+def determine_demographic_interactions(gender, orig_disabled):
+    """
+    Depending on model this may change
+    """
+    demo_interaction = None
+    if gender == 'F' and orig_disabled == 1:
+        demo_interaction = 'OriginallyDisabled_Female'
+    elif gender == 'M' and orig_disabled == 1:
+        demo_interaction = 'OriginallyDisabled_Male'
+
+    return demo_interaction
