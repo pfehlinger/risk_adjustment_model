@@ -1,4 +1,4 @@
-from src.risk_adjustment_model.utilities import nvl, determine_age_band
+from .utilities import nvl, determine_age_band
 
 
 def age_sex_edits(gender, age, dx_categories):
