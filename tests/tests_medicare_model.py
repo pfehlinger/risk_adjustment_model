@@ -1,5 +1,5 @@
 import unittest
-from src.risk_adjustment_model import MedicareModel
+from risk_adjustment_model import MedicareModel
 from math import isclose
 
 
