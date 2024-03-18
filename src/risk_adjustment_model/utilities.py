@@ -30,6 +30,6 @@ def nvl(value, default):
         return default
     
 def import_function(module_name, function_name):
-    module = importlib.import_module(module_name, package='src.risk_adjustment_model')
+    module = importlib.import_module(module_name, package='risk_adjustment_model')
     func = getattr(module, function_name)
     return func

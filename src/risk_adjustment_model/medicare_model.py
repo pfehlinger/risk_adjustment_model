@@ -1,8 +1,7 @@
-
-from src.risk_adjustment_model.config import Config
-from src.risk_adjustment_model.beneficiary import MedicareBeneficiary
-from src.risk_adjustment_model.category import MedicareCategory
-from src.risk_adjustment_model.output import ScoringResults
+from .config import Config
+from .beneficiary import MedicareBeneficiary
+from .category import MedicareCategory
+from .output import ScoringResults
 
 
 class MedicareModel:
@@ -21,8 +20,9 @@ class MedicareModel:
 
     def __init__(self, version: str, year=None):
         self.config = Config(version, year)
-        self.coding_intensity_adjuster = self._get_coding_intensity_adjuster()
-        self.normalization_factor = self._get_normalization_factor() 
+        self.coding_intensity_adjuster = self._get_coding_intensity_adjuster(self.config.model_year)
+        # PF: This will break for the models that have different normalization factors, will have to refactor once implemented
+        self.normalization_factor = self._get_normalization_factor(version, self.config.model_year)
 
     def score(
         self,
@@ -165,30 +165,54 @@ class MedicareModel:
             except KeyError:
                 pass    
  
-    def _get_coding_intensity_adjuster(self) -> float:
+    def _get_coding_intensity_adjuster(self, year) -> float:
         """
-        This should get overwritten based on year.
         
         Returns:
             float: The coding intensity adjuster.
         """
-        if self.config.model_year in [2020, 2021, 2022, 2023, 2024, 2025]:
-            coding_intensity_adjuster = 1 - 0.059
+        coding_intensity_dict = {
+            2020: 0.941,
+            2021: 0.941,
+            2022: 0.941,
+            2023: 0.941,
+            2024: 0.941,
+            2025: 0.941,
+        }
+        if coding_intensity_dict.get(year):
+            coding_intensity_adjuster = coding_intensity_dict.get(year)
         else:
             coding_intensity_adjuster = 1
         
         return coding_intensity_adjuster
-    
-    def _get_normalization_factor(self) -> float:
+
+    def _get_normalization_factor(self, version, year, model_group='C') -> float:
         """
-        This should get overwritten based on model version and year.
         
+        C = Commmunity
+        D = Dialysis
+        G = Graft
+
         Returns:
             float: The normalization factor.
         """
-        if self.config.model_year in [2020, 2021, 2022, 2023, 2024, 2025]:
-            normalization_factor = 1.146
-        else:
+        norm_factor_dict = {
+            'v24': {
+                2020: {'C': 1.069},
+                2021: {'C': 1.097},
+                2022: {'C': 1.118},
+                2023: {'C': 1.127},
+                2024: {'C': 1.146},
+                2025: {'C': 1.153},
+            },
+            'v28': {
+                2024: {'C': 1.015},
+                2025: {'C': 1.045},
+            }
+        }
+        try:
+            normalization_factor = norm_factor_dict[version][year][model_group]
+        except KeyError:
             normalization_factor = 1
         
         return normalization_factor

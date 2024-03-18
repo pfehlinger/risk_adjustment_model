@@ -1,5 +1,5 @@
-from src.risk_adjustment_model.config import Config
-from src.risk_adjustment_model.utilities import determine_age_band, import_function
+from .config import Config
+from .utilities import determine_age_band, import_function
 from typing import Union, Optional
 
 class Category:
@@ -159,7 +159,13 @@ class MedicareCategory(Category):
         category_list = list(categories)
         categories_dict = {}
         dropped_codes_total = []
-        
+
+        # Patch for V28 Heart Conditions
+        if self.config.version == 'v28':
+            if 'HCC223' in category_list and \
+                not any(category in category_list for category in ['HCC221', 'HCC222', 'HCC224', 'HCC225', 'HCC226']):
+                category_list.remove('HCC223')
+
         for category in category_list:
             dropped_codes = []
             if category in self.config.hierarchy_definitions.keys():
