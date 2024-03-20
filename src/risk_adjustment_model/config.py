@@ -31,10 +31,10 @@ class Config:
 
         """
         if not self.year:
-            with importlib.resources.path('risk_adjustment_model.reference_data', 'medicare') as data_dir:
-                dirs = os.listdir(data_dir / self.version)
-                years = [int(dir) for dir in dirs]
-                max_year = max(years)
+            data_dir = importlib.resources.files('risk_adjustment_model.reference_data').joinpath('medicare')
+            dirs = os.listdir(data_dir / self.version)
+            years = [int(dir) for dir in dirs]
+            max_year = max(years)
         else:
             max_year = self.year
         
@@ -47,8 +47,8 @@ class Config:
         Returns:
             Path: The directory path to the reference data.
         """
-        with importlib.resources.path('risk_adjustment_model.reference_data', 'medicare') as data_dir:
-            data_directory = data_dir / self.version / str(self.model_year)
+        data_dir = importlib.resources.files('risk_adjustment_model.reference_data').joinpath('medicare')
+        data_directory = data_dir / self.version / str(self.model_year)
         
         return data_directory
         
