@@ -8,6 +8,7 @@ def test_category_mapping():
     results = model.score(gender='M', orec='1', medicaid=False, diagnosis_codes=['I209'], age=67, population='CNA', verbose=False)
     assert 'HCC88' in results.category_list
 
+
 def test_demo_category_mapping():
     model = MedicareModel('v24')
     results = model.score(gender='M', orec='1', medicaid=False, diagnosis_codes=['E1169'], age=67, population='CNA', verbose=False)
