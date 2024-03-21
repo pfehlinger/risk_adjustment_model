@@ -1,6 +1,7 @@
 from dataclasses import dataclass
 
-#PF: This could be refactored to use inheritance or have one per LOB I think
+
+# PF: This could be refactored to use inheritance or have one per LOB I think
 @dataclass
 class ScoringResults:
     gender: str

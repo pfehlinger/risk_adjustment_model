@@ -1,6 +1,6 @@
-from .config import Config
-from .utilities import determine_age_band, import_function
-from typing import Union, Optional
+from .utilities import import_function
+from typing import Union
+
 
 class Category:
     """
@@ -20,24 +20,28 @@ class Category:
         # self.disease_cats_dict, self.disease_categories = self._get_disease_categories(self.dx_categories)
 
     def _get_diagnosis_categories(self, diagnosis_codes):
-        """
-        """
+        """ """
         if isinstance(diagnosis_codes, list):
-            dx_categories = {diag:self.diag_to_category_map[diag] for diag in diagnosis_codes if diag in self.diag_to_category_map}
+            dx_categories = {
+                diag: self.diag_to_category_map[diag]
+                for diag in diagnosis_codes
+                if diag in self.diag_to_category_map
+            }
         else:
-            dx_categories = {diagnosis_codes:self.diag_to_category_map[diagnosis_codes]}
+            dx_categories = {
+                diagnosis_codes: self.diag_to_category_map[diagnosis_codes]
+            }
 
         return dx_categories
-    
-    def _get_disease_categories(self, dx_categories: dict):
 
+    def _get_disease_categories(self, dx_categories: dict):
         cat_dict = {}
         all_cats = [value for catlist in dx_categories.values() for value in catlist]
         unique_cats = set(all_cats)
         for cat in unique_cats:
             dx_codes = [key for key, value in dx_categories.items() if cat in value]
             cat_dict[cat] = dx_codes
-        
+
         return cat_dict, unique_cats
 
 
@@ -49,15 +53,22 @@ class MedicareCategory(Category):
     - age sex edits
     - hierarchies
     """
+
     # PF: This may be unnecessary and just should rely on class inheritance
     def __init__(self, config, beneficiary):
         super().__init__(config, beneficiary)
         # Each model version may have its own demographic categories, interactions, age sex edits
         # so these are imported dynamically based on the model version
-        self._determine_demographic_cats = import_function('.'+config.version, 'determine_demographic_cats')
-        self._determine_demographic_interactions = import_function('.'+config.version, 'determine_demographic_interactions')
-        self._age_sex_edits = import_function('.'+config.version, 'age_sex_edits')
-        self._determine_disease_interactions = import_function('.'+config.version, 'determine_disease_interactions')
+        self._determine_demographic_cats = import_function(
+            "." + config.version, "determine_demographic_cats"
+        )
+        self._determine_demographic_interactions = import_function(
+            "." + config.version, "determine_demographic_interactions"
+        )
+        self._age_sex_edits = import_function("." + config.version, "age_sex_edits")
+        self._determine_disease_interactions = import_function(
+            "." + config.version, "determine_disease_interactions"
+        )
 
         self.category_details, self.category_list = self.get_categories(beneficiary)
 
@@ -80,15 +91,15 @@ class MedicareCategory(Category):
             EXAMPLE RETURN
 
         Notes:
-            This function retrieves categories based on demographic information such as age, gender, 
-            original reason for entitlement category, and Medicaid status. It also considers any 
+            This function retrieves categories based on demographic information such as age, gender,
+            original reason for entitlement category, and Medicaid status. It also considers any
             provided diagnosis codes to fetch additional disease-specific categories.
-            
+
             The function first retrieves demographic categories using the get_demographic_cats() method.
-            Then, if diagnosis codes are provided, it retrieves disease-specific categories using 
-            the get_disease_categories() method. 
-            
-            Finally, it combines the demographic and disease-specific categories into a list 
+            Then, if diagnosis codes are provided, it retrieves disease-specific categories using
+            the get_disease_categories() method.
+
+            Finally, it combines the demographic and disease-specific categories into a list
             of category keys and returns both the dictionary of categories and the list of keys.
         """
         demo_categories = self.determine_demographic_cats(beneficiary)
@@ -109,43 +120,56 @@ class MedicareCategory(Category):
         """
         final_cat_dict = {}
         dx_categories = self._get_diagnosis_categories(beneficiary.diagnosis_codes)
-        dx_categories = self._age_sex_edits(beneficiary.gender, beneficiary.age, dx_categories)
+        dx_categories = self._age_sex_edits(
+            beneficiary.gender, beneficiary.age, dx_categories
+        )
         category_dict, categories = self._get_disease_categories(dx_categories)
         hier_category_dict, categories = self._apply_hierarchies(categories)
-        interactions = self._determine_disease_interactions(categories, beneficiary.disabled)
+        interactions = self._determine_disease_interactions(
+            categories, beneficiary.disabled
+        )
         if interactions:
             categories.extend(interactions)
 
         for category in categories:
             final_cat_dict[category] = {
-                'dropped_categories': hier_category_dict.get(category, None),
-                'diagnosis_map': category_dict.get(category, None),
+                "dropped_categories": hier_category_dict.get(category, None),
+                "diagnosis_map": category_dict.get(category, None),
             }
-        
+
         return final_cat_dict
-    
+
     def _get_diagnosis_categories(self, diagnosis_codes):
-        """
-        """
+        """ """
         if isinstance(diagnosis_codes, list):
-            dx_categories = {diag:self.diag_to_category_map[diag] for diag in diagnosis_codes if diag in self.diag_to_category_map}
+            dx_categories = {
+                diag: self.diag_to_category_map[diag]
+                for diag in diagnosis_codes
+                if diag in self.diag_to_category_map
+            }
         else:
-            dx_categories = {diagnosis_codes:self.diag_to_category_map[diagnosis_codes]}
+            dx_categories = {
+                diagnosis_codes: self.diag_to_category_map[diagnosis_codes]
+            }
 
         return dx_categories
-    
+
     def _get_disease_categories(self, dx_categories):
-        """
-        """
+        """ """
         cat_dict = {}
-        all_cats = [value for catlist in dx_categories.values() for value in catlist if value != 'NA']
+        all_cats = [
+            value
+            for catlist in dx_categories.values()
+            for value in catlist
+            if value != "NA"
+        ]
         unique_cats = set(all_cats)
         for cat in unique_cats:
             dx_codes = [key for key, value in dx_categories.items() if cat in value]
             cat_dict[cat] = dx_codes
-        
+
         return cat_dict, unique_cats
-    
+
     def _apply_hierarchies(self, categories: set) -> dict:
         """
         Takes in a unique set of categories and removes categories that fall into
@@ -161,15 +185,19 @@ class MedicareCategory(Category):
         dropped_codes_total = []
 
         # Patch for V28 Heart Conditions
-        if self.config.version == 'v28':
-            if 'HCC223' in category_list and \
-                not any(category in category_list for category in ['HCC221', 'HCC222', 'HCC224', 'HCC225', 'HCC226']):
-                category_list.remove('HCC223')
+        if self.config.version == "v28":
+            if "HCC223" in category_list and not any(
+                category in category_list
+                for category in ["HCC221", "HCC222", "HCC224", "HCC225", "HCC226"]
+            ):
+                category_list.remove("HCC223")
 
         for category in category_list:
             dropped_codes = []
             if category in self.config.hierarchy_definitions.keys():
-                for remove_category in self.config.hierarchy_definitions[category]['remove_code']:
+                for remove_category in self.config.hierarchy_definitions[category][
+                    "remove_code"
+                ]:
                     try:
                         category_list.remove(remove_category)
                     except ValueError:
@@ -181,22 +209,27 @@ class MedicareCategory(Category):
                     categories_dict[category] = None
                 else:
                     categories_dict[category] = dropped_codes
-        
+
         # Fill in remaining categories
         for category in category_list:
             if category not in dropped_codes_total:
                 categories_dict[category] = None
 
         return categories_dict, category_list
-    
+
     def determine_demographic_cats(self, beneficiary) -> list:
         """Need to do the static typing stuff above for gender, age, orec"""
         # NEED TO DO LTIMEDICAID
         demo_cats = []
-        demo_cats.append(self._determine_demographic_cats(beneficiary.age, beneficiary.gender, beneficiary.population))
-        demo_int = self._determine_demographic_interactions(beneficiary.gender, beneficiary.orig_disabled)
+        demo_cats.append(
+            self._determine_demographic_cats(
+                beneficiary.age, beneficiary.gender, beneficiary.population
+            )
+        )
+        demo_int = self._determine_demographic_interactions(
+            beneficiary.gender, beneficiary.orig_disabled
+        )
         if demo_int:
             demo_cats.append(demo_int)
 
         return demo_cats
-    
