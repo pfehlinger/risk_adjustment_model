@@ -2,11 +2,10 @@ import datetime
 
 
 class Beneficiary:
-    def __init__(self, gender: str, age=None, dob=None, diagnosis_codes=[]):
+    def __init__(self, gender: str, age=None, dob=None):
         self.gender = gender
         self.age = age
         self.dob = dob
-        self.diagnosis_codes = diagnosis_codes
 
 
 class MedicareBeneficiary(Beneficiary):
@@ -18,9 +17,8 @@ class MedicareBeneficiary(Beneficiary):
         population="CNA",
         age=None,
         dob=None,
-        diagnosis_codes=[],
     ):
-        super().__init__(gender, age, dob, diagnosis_codes)
+        super().__init__(gender, age, dob)
         self.orec = orec
         self.medicaid = medicaid
         self.population = population

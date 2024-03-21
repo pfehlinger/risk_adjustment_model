@@ -1,22 +1,16 @@
 from .utilities import determine_age_band
 
 
-def age_sex_edits(gender, age, dx_categories):
-    for diagnosis_code in dx_categories.keys():
-        new_category = _age_sex_edit_1(gender, diagnosis_code)
-        if new_category:
-            dx_categories[diagnosis_code] = new_category
-            break
-        new_category = _age_sex_edit_2(age, diagnosis_code)
-        if new_category:
-            dx_categories[diagnosis_code] = new_category
-            break
-        new_category = _age_sex_edit_3(age, diagnosis_code)
-        if new_category:
-            dx_categories[diagnosis_code] = new_category
-            break
-
-    return dx_categories
+def age_sex_edits(gender, age, diagnosis_code):
+    new_category = _age_sex_edit_1(gender, diagnosis_code)
+    if new_category:
+        return new_category
+    new_category = _age_sex_edit_2(age, diagnosis_code)
+    if new_category:
+        return new_category
+    new_category = _age_sex_edit_3(age, diagnosis_code)
+    if new_category:
+        return new_category
 
 
 def _age_sex_edit_1(gender, dx_code):

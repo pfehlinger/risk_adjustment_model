@@ -1,7 +1,9 @@
 from .config import Config
 from .beneficiary import MedicareBeneficiary
-from .category import MedicareCategory
+from .category import Category
 from .output import ScoringResults
+from .diagnosis_code import MedicareDxCodeCategory
+from .utilities import import_function
 
 
 class MedicareModel:
@@ -27,6 +29,15 @@ class MedicareModel:
         self.normalization_factor = self._get_normalization_factor(
             version, self.config.model_year
         )
+        self._determine_demographic_cats = import_function(
+            "." + self.config.version, "determine_demographic_cats"
+        )
+        self._determine_demographic_interactions = import_function(
+            "." + self.config.version, "determine_demographic_interactions"
+        )
+        self._determine_disease_interactions = import_function(
+            "." + self.config.version, "determine_disease_interactions"
+        )
 
     def score(
         self,
@@ -41,6 +52,14 @@ class MedicareModel:
     ) -> dict:
         """
         Determines the risk score for the inputs. Entry point for end users.
+        Steps:
+        1. Use beneficiary information to get the demographic categories
+        2. Using diagnosis code inputs and beneficiary information get the diagnosis code to
+           category relationship
+        3. Get the unique set of categories from diagnosis codes
+        4. Apply hierarchies
+        5. Determine disease interactions
+
 
         Args:
             gender (str): Gender of the beneficiary being scored, valid values M or F.
@@ -55,25 +74,72 @@ class MedicareModel:
         Returns:
             dict: A dictionary containing the score information.
         """
-        beneficiary = MedicareBeneficiary(
-            gender, orec, medicaid, population, age, dob, diagnosis_codes
+
+        beneficiary = MedicareBeneficiary(gender, orec, medicaid, population, age, dob)
+        demo_categories = self.determine_demographic_cats(beneficiary)
+
+        if diagnosis_codes:
+            cat_dict = {}
+            dx_categories = [
+                MedicareDxCodeCategory(self.config, diagnosis_code, beneficiary)
+                for diagnosis_code in diagnosis_codes
+            ]
+            # Some diagnosis codes go to more than one category thus the category is a list
+            # and it is a two step process to unpack them
+            unique_disease_cats = set(
+                category
+                for dx_code in dx_categories
+                for category in dx_code.category
+                if category != "NA"
+            )
+            hier_category_dict, disease_categories = self._apply_hierarchies(
+                unique_disease_cats
+            )
+            interactions = self._determine_disease_interactions(
+                disease_categories, beneficiary.disabled
+            )
+            if interactions:
+                disease_categories.extend(interactions)
+
+            for category in disease_categories:
+                cat_dict[category] = {
+                    "dropped_categories": hier_category_dict.get(category, None),
+                    "diagnosis_map": [
+                        dx_code.diagnosis_code
+                        for dx_code in dx_categories
+                        if dx_code.category == category
+                    ],
+                }
+        else:
+            disease_categories = None
+            cat_dict = {}
+
+        if disease_categories:
+            unique_categories = demo_categories + disease_categories
+        else:
+            unique_categories = demo_categories
+        categories = [
+            Category(self.config, beneficiary.risk_model_population, category)
+            for category in unique_categories
+        ]
+
+        score_raw = sum([category.coefficient for category in categories])
+        disease_score_raw = sum(
+            [
+                category.coefficient
+                for category in categories
+                if "disease" in category.type
+            ]
         )
-        categories = MedicareCategory(self.config, beneficiary)
-        score_dict = self.get_weights(
-            categories.category_list, beneficiary.risk_model_population
+        demographic_score_raw = sum(
+            [
+                category.coefficient
+                for category in categories
+                if "demographic" in category.type
+            ]
         )
 
-        combine_dict = {}
-        # Combine the dictionaries to make output
-        for key, value in score_dict["categories"].items():
-            if categories.category_details.get(key):
-                value.update(categories.category_details.get(key))
-                combine_dict[key] = value
-            else:
-                combine_dict[key] = value
-
-        if not verbose:
-            self._trim_output(combine_dict)
+        category_details = self._build_category_details(categories, cat_dict, verbose)
 
         output_dict = ScoringResults(
             gender=beneficiary.gender,
@@ -81,7 +147,7 @@ class MedicareModel:
             medicaid=beneficiary.medicaid,
             age=beneficiary.age,
             dob=beneficiary.dob,
-            diagnosis_codes=beneficiary.diagnosis_codes,
+            diagnosis_codes=diagnosis_codes,
             year=self.config.year,
             population=beneficiary.population,
             risk_model_age=beneficiary.risk_model_age,
@@ -90,75 +156,102 @@ class MedicareModel:
             model_year=self.config.model_year,
             coding_intensity_adjuster=self.coding_intensity_adjuster,
             normalization_factor=self.normalization_factor,
-            score_raw=score_dict["score_raw"],
-            disease_score_raw=score_dict["disease_score_raw"],
-            demographic_score_raw=score_dict["demographic_score_raw"],
-            score=score_dict["score"],
-            disease_score=score_dict["disease_score"],
-            demographic_score=score_dict["demographic_score"],
-            category_list=categories.category_list,
-            category_details=combine_dict,
+            score_raw=score_raw,
+            disease_score_raw=disease_score_raw,
+            demographic_score_raw=demographic_score_raw,
+            score=self._apply_norm_factor_coding_adj(score_raw),
+            disease_score=self._apply_norm_factor_coding_adj(disease_score_raw),
+            demographic_score=self._apply_norm_factor_coding_adj(demographic_score_raw),
+            category_list=unique_categories,
+            category_details=category_details,
         )
 
         return output_dict
 
-    def get_weights(self, categories: list, population: str):
-        """
-        Returns:
-            {'categories': {'HCC1': {'weight': 0.6,
-                'type': 'disease',
-                'category_number': 1,
-                'category_description': 'HIV/AIDS'},
-                'F65_69': {'weight': 0.6,
-                'type': 'demographic',
-                'category_number': None,
-                'category_description': 'Female, 65 to 69 Years Old'}},
-                'score_raw': 1.2,
-                'disease_score_raw': 0.6,
-                'demographic_score_raw': 0.6,
-                'score': 0.9853,
-                'disease_score': 0.4927,
-                'demographic_score': 0.4927}
-        """
-        category_dict = {}
-        cat_output = {}
-        score = 0
-        disease_score = 0
-        demographic_score = 0
-        for cat in categories:
-            for key, value in self.config.category_definitions.items():
-                if cat == key:
-                    weight = self.config.category_weights[cat][population]
-                    score += weight
-                    if (
-                        value["type"] == "disease"
-                        or value["type"] == "disease_interaction"
-                    ):
-                        disease_score += weight
-                    if (
-                        value["type"] == "demographic"
-                        or value["type"] == "demographic_interaction"
-                    ):
-                        demographic_score += weight
-                    category_dict[key] = {
-                        "weight": weight,
-                        "type": value["type"],
-                        "category_number": value.get("number", None),
-                        "category_description": value["descr"],
-                    }
-        cat_output["categories"] = category_dict
-        cat_output["score_raw"] = score
-        cat_output["disease_score_raw"] = disease_score
-        cat_output["demographic_score_raw"] = demographic_score
-
-        # Now apply coding intensity and normalization to scores
-        cat_output["score"] = self._apply_norm_factor_coding_adj(score)
-        cat_output["disease_score"] = self._apply_norm_factor_coding_adj(disease_score)
-        cat_output["demographic_score"] = self._apply_norm_factor_coding_adj(
-            demographic_score
+    def determine_demographic_cats(self, beneficiary) -> list:
+        """Need to do the static typing stuff above for gender, age, orec"""
+        # NEED TO DO LTIMEDICAID
+        demo_cats = []
+        demo_cats.append(
+            self._determine_demographic_cats(
+                beneficiary.age, beneficiary.gender, beneficiary.population
+            )
         )
+        demo_int = self._determine_demographic_interactions(
+            beneficiary.gender, beneficiary.orig_disabled
+        )
+        if demo_int:
+            demo_cats.append(demo_int)
 
-        return cat_output
+        return demo_cats
+
+    def _apply_hierarchies(self, categories: set) -> dict:
+        """
+        Takes in a unique set of categories and removes categories that fall into
+        hierarchies as outlined in the hierarchy_definition file.
+
+        Returns:
+            dict containing the remaining categories and any categories "dropped"
+            by that category.
+
+        """
+        category_list = list(categories)
+        categories_dict = {}
+        dropped_codes_total = []
+
+        # Patch for V28 Heart Conditions
+        if self.config.version == "v28":
+            if "HCC223" in category_list and not any(
+                category in category_list
+                for category in ["HCC221", "HCC222", "HCC224", "HCC225", "HCC226"]
+            ):
+                category_list.remove("HCC223")
+
+        for category in category_list:
+            dropped_codes = []
+            if category in self.config.hierarchy_definitions.keys():
+                for remove_category in self.config.hierarchy_definitions[category][
+                    "remove_code"
+                ]:
+                    try:
+                        category_list.remove(remove_category)
+                    except ValueError:
+                        pass
+                    else:
+                        dropped_codes.append(remove_category)
+                        dropped_codes_total.append(remove_category)
+                if not dropped_codes:
+                    categories_dict[category] = None
+                else:
+                    categories_dict[category] = dropped_codes
+
+        # Fill in remaining categories
+        for category in category_list:
+            if category not in dropped_codes_total:
+                categories_dict[category] = None
+
+        return categories_dict, category_list
+
+    def _build_category_details(self, categories, category_dict, verbose):
+        # Combine the dictionaries to make output
+        category_details = {}
+        for category in categories:
+            if verbose:
+                category_details[category.category] = {
+                    "coefficient": category.coefficient,
+                    "type": category.type,
+                    "category_number": category.number,
+                    "category_description": category.description,
+                    "dropped_categories": category_dict.get(category, None),
+                    "diagnosis_map": category_dict.get(category, None),
+                }
+            else:
+                category_details[category.category] = {
+                    "coefficient": category.coefficient,
+                    "diagnosis_map": category_dict.get(category, None),
+                }
+
+        return category_details
 
     # --- Helper methods which should not be overwritten ---
 
@@ -168,17 +261,6 @@ class MedicareModel:
             / self.normalization_factor,
             4,
         )
-
-    def _trim_output(self, score_dict: dict) -> dict:
-        """Takes in the verbose output and trims to the smaller output"""
-        for key, value in score_dict.items():
-            del value["type"]
-            del value["category_number"]
-            del value["category_description"]
-            try:
-                del value["dropped_categories"]
-            except KeyError:
-                pass
 
     def _get_coding_intensity_adjuster(self, year) -> float:
         """

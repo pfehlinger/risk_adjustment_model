@@ -398,17 +398,17 @@ def test_raw_score():
         gender="M",
         orec="0",
         medicaid=False,
-        diagnosis_codes=["E1169", "I5030", "I509", "I211", "I209", "R05"],
+        diagnosis_codes=["E1169", "I5030", "I509", "I2111", "I209"],
         age=70,
         population="CNA",
     )
-    assert isclose(results.score_raw, 1.283)
+    assert isclose(results.score_raw, 1.343)
     results = model.score(
         gender="F",
         orec="0",
         medicaid=False,
-        diagnosis_codes=["E1169", "I5030", "I509", "I211", "I209", "R05"],
+        diagnosis_codes=["E1169", "I5030", "I509", "I2111", "I209"],
         age=45,
         population="CND",
     )
-    assert isclose(results.score_raw, 1.281)
+    assert isclose(results.score_raw, 1.434)
