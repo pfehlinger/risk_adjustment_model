@@ -20,9 +20,13 @@ class MedicareModel:
 
     def __init__(self, version: str, year=None):
         self.config = Config(version, year)
-        self.coding_intensity_adjuster = self._get_coding_intensity_adjuster(self.config.model_year)
+        self.coding_intensity_adjuster = self._get_coding_intensity_adjuster(
+            self.config.model_year
+        )
         # PF: This will break for the models that have different normalization factors, will have to refactor once implemented
-        self.normalization_factor = self._get_normalization_factor(version, self.config.model_year)
+        self.normalization_factor = self._get_normalization_factor(
+            version, self.config.model_year
+        )
 
     def score(
         self,
@@ -32,8 +36,8 @@ class MedicareModel:
         diagnosis_codes=[],
         age=None,
         dob=None,
-        population='CNA',
-        verbose=False
+        population="CNA",
+        verbose=False,
     ) -> dict:
         """
         Determines the risk score for the inputs. Entry point for end users.
@@ -51,13 +55,17 @@ class MedicareModel:
         Returns:
             dict: A dictionary containing the score information.
         """
-        beneficiary = MedicareBeneficiary(gender, orec, medicaid, population, age, dob, diagnosis_codes)
+        beneficiary = MedicareBeneficiary(
+            gender, orec, medicaid, population, age, dob, diagnosis_codes
+        )
         categories = MedicareCategory(self.config, beneficiary)
-        score_dict = self.get_weights(categories.category_list, beneficiary.risk_model_population)
+        score_dict = self.get_weights(
+            categories.category_list, beneficiary.risk_model_population
+        )
 
         combine_dict = {}
         # Combine the dictionaries to make output
-        for key, value in score_dict['categories'].items():
+        for key, value in score_dict["categories"].items():
             if categories.category_details.get(key):
                 value.update(categories.category_details.get(key))
                 combine_dict[key] = value
@@ -82,14 +90,14 @@ class MedicareModel:
             model_year=self.config.model_year,
             coding_intensity_adjuster=self.coding_intensity_adjuster,
             normalization_factor=self.normalization_factor,
-            score_raw=score_dict['score_raw'],
-            disease_score_raw=score_dict['disease_score_raw'],
-            demographic_score_raw=score_dict['demographic_score_raw'],
-            score=score_dict['score'],
-            disease_score=score_dict['disease_score'],
-            demographic_score=score_dict['demographic_score'],
+            score_raw=score_dict["score_raw"],
+            disease_score_raw=score_dict["disease_score_raw"],
+            demographic_score_raw=score_dict["demographic_score_raw"],
+            score=score_dict["score"],
+            disease_score=score_dict["disease_score"],
+            demographic_score=score_dict["demographic_score"],
             category_list=categories.category_list,
-            category_details=combine_dict
+            category_details=combine_dict,
         )
 
         return output_dict
@@ -122,52 +130,59 @@ class MedicareModel:
                 if cat == key:
                     weight = self.config.category_weights[cat][population]
                     score += weight
-                    if value['type'] == 'disease' or value['type'] == 'disease_interaction':
+                    if (
+                        value["type"] == "disease"
+                        or value["type"] == "disease_interaction"
+                    ):
                         disease_score += weight
-                    if value['type'] == 'demographic' or value['type'] == 'demographic_interaction':
+                    if (
+                        value["type"] == "demographic"
+                        or value["type"] == "demographic_interaction"
+                    ):
                         demographic_score += weight
                     category_dict[key] = {
-                        'weight': weight,
-                        'type': value['type'],
-                        'category_number': value.get('number', None),
-                        'category_description': value['descr'],
+                        "weight": weight,
+                        "type": value["type"],
+                        "category_number": value.get("number", None),
+                        "category_description": value["descr"],
                     }
-        cat_output['categories'] = category_dict
-        cat_output['score_raw'] = score
-        cat_output['disease_score_raw'] = disease_score
-        cat_output['demographic_score_raw'] = demographic_score
+        cat_output["categories"] = category_dict
+        cat_output["score_raw"] = score
+        cat_output["disease_score_raw"] = disease_score
+        cat_output["demographic_score_raw"] = demographic_score
 
         # Now apply coding intensity and normalization to scores
-        cat_output['score'] = self._apply_norm_factor_coding_adj(score)
-        cat_output['disease_score'] = self._apply_norm_factor_coding_adj(disease_score)
-        cat_output['demographic_score'] = self._apply_norm_factor_coding_adj(demographic_score)
-       
+        cat_output["score"] = self._apply_norm_factor_coding_adj(score)
+        cat_output["disease_score"] = self._apply_norm_factor_coding_adj(disease_score)
+        cat_output["demographic_score"] = self._apply_norm_factor_coding_adj(
+            demographic_score
+        )
+
         return cat_output
-    
+
     # --- Helper methods which should not be overwritten ---
 
     def _apply_norm_factor_coding_adj(self, score: float) -> float:
         return round(
-            round(
-                score * self.coding_intensity_adjuster, 4
-            )
-            / self.normalization_factor, 4
+            round(score * self.coding_intensity_adjuster, 4)
+            / self.normalization_factor,
+            4,
         )
 
     def _trim_output(self, score_dict: dict) -> dict:
         """Takes in the verbose output and trims to the smaller output"""
         for key, value in score_dict.items():
-            del value['type']
-            del value['category_number']
-            del value['category_description']
-            try: 
-                del value['dropped_categories']
+            del value["type"]
+            del value["category_number"]
+            del value["category_description"]
+            try:
+                del value["dropped_categories"]
             except KeyError:
-                pass    
- 
+                pass
+
     def _get_coding_intensity_adjuster(self, year) -> float:
         """
-        
+
         Returns:
             float: The coding intensity adjuster.
         """
@@ -183,12 +198,12 @@ class MedicareModel:
             coding_intensity_adjuster = coding_intensity_dict.get(year)
         else:
             coding_intensity_adjuster = 1
-        
+
         return coding_intensity_adjuster
 
-    def _get_normalization_factor(self, version, year, model_group='C') -> float:
+    def _get_normalization_factor(self, version, year, model_group="C") -> float:
         """
-        
+
         C = Commmunity
         D = Dialysis
         G = Graft
@@ -197,22 +212,22 @@ class MedicareModel:
             float: The normalization factor.
         """
         norm_factor_dict = {
-            'v24': {
-                2020: {'C': 1.069},
-                2021: {'C': 1.097},
-                2022: {'C': 1.118},
-                2023: {'C': 1.127},
-                2024: {'C': 1.146},
-                2025: {'C': 1.153},
+            "v24": {
+                2020: {"C": 1.069},
+                2021: {"C": 1.097},
+                2022: {"C": 1.118},
+                2023: {"C": 1.127},
+                2024: {"C": 1.146},
+                2025: {"C": 1.153},
             },
-            'v28': {
-                2024: {'C': 1.015},
-                2025: {'C': 1.045},
-            }
+            "v28": {
+                2024: {"C": 1.015},
+                2025: {"C": 1.045},
+            },
         }
         try:
             normalization_factor = norm_factor_dict[version][year][model_group]
         except KeyError:
             normalization_factor = 1
-        
+
         return normalization_factor

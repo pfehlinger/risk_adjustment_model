@@ -18,11 +18,3 @@ repos:
       args: [ --fix ]
     # Run the formatter.
     - id: ruff-format
--   repo: https://github.com/Yelp/detect-secrets
-    rev: v1.4.0
-    hooks:
-    -   id: detect-secrets
-        exclude: .*/tests/.*
-        language: python
-        entry: detect-secrets-hook
-        args: ['--baseline', '.secrets.baseline']

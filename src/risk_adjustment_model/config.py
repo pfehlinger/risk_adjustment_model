@@ -3,8 +3,8 @@ import importlib.resources
 import os
 from pathlib import Path
 
-class Config:
 
+class Config:
     def __init__(self, version, year=None):
         self.version = version
         self.year = year
@@ -26,20 +26,22 @@ class Config:
             int: The model year.
 
         Raises:
-            FileNotFoundError: If the specified version directory or reference data 
+            FileNotFoundError: If the specified version directory or reference data
                             directory does not exist.
 
         """
         if not self.year:
-            data_dir = importlib.resources.files('risk_adjustment_model.reference_data').joinpath('medicare')
+            data_dir = importlib.resources.files(
+                "risk_adjustment_model.reference_data"
+            ).joinpath("medicare")
             dirs = os.listdir(data_dir / self.version)
             years = [int(dir) for dir in dirs]
             max_year = max(years)
         else:
             max_year = self.year
-        
+
         return max_year
-    
+
     def _get_data_directory(self) -> Path:
         """
         Get the directory path to the reference data for the Medicare model.
@@ -47,11 +49,13 @@ class Config:
         Returns:
             Path: The directory path to the reference data.
         """
-        data_dir = importlib.resources.files('risk_adjustment_model.reference_data').joinpath('medicare')
+        data_dir = importlib.resources.files(
+            "risk_adjustment_model.reference_data"
+        ).joinpath("medicare")
         data_directory = data_dir / self.version / str(self.model_year)
-        
+
         return data_directory
-        
+
     def _get_hierarchy_definitions(self) -> dict:
         """
         Retrieve the hierarchy definitions from a JSON file.
@@ -59,11 +63,11 @@ class Config:
         Returns:
             dict: A dictionary containing the hierarchy definitions.
         """
-        with open(self.data_directory / 'hierarchy_definition.json') as file:
+        with open(self.data_directory / "hierarchy_definition.json") as file:
             hierarchy_definitions = json.load(file)
-        
+
         return hierarchy_definitions
-    
+
     def _get_category_definitions(self) -> dict:
         """
         Retrieve category definitions from a JSON file.
@@ -71,11 +75,11 @@ class Config:
         Returns:
             dict: A dictionary containing the category definitions.
         """
-        with open(self.data_directory / 'category_definition.json') as file:
+        with open(self.data_directory / "category_definition.json") as file:
             category_definitions = json.load(file)
-        
+
         return category_definitions
-    
+
     def _get_diagnosis_code_to_category_mapping(self) -> dict:
         """
         Retrieve diagnosis code to category mappings from a text file. It expects the file
@@ -85,18 +89,18 @@ class Config:
             dict: A dictionary mapping diagnosis codes to categories.
         """
         diag_to_category_map = {}
-        with open(self.data_directory / 'diag_to_category_map.txt', 'r') as file:
+        with open(self.data_directory / "diag_to_category_map.txt", "r") as file:
             for line in file:
                 # Split the line based on the delimiter
-                parts = line.strip().split('|')
+                parts = line.strip().split("|")
                 diag = parts[0].strip()
-                category = 'HCC' + parts[1].strip()
+                category = "HCC" + parts[1].strip()
                 if diag not in diag_to_category_map:
                     diag_to_category_map[diag] = []
                 diag_to_category_map[diag].append(category)
-        
-        return diag_to_category_map        
-    
+
+        return diag_to_category_map
+
     def _get_category_weights(self) -> dict:
         """
         Retrieve category weights from a CSV file.
@@ -105,27 +109,27 @@ class Config:
             dict: A dictionary containing category weights.
 
         Notes:
-            The CSV file is expected to have a header row specifying column 
-            names, and subsequent rows representing category weights. Each row should 
-            contain values separated by a delimiter, with one column representing 
-            the category and others representing different weights. The function constructs 
+            The CSV file is expected to have a header row specifying column
+            names, and subsequent rows representing category weights. Each row should
+            contain values separated by a delimiter, with one column representing
+            the category and others representing different weights. The function constructs
             a nested dictionary where each category is mapped to a dictionary of weights.
         """
         weights = {}
         col_map = {}
-        with open(self.data_directory / 'weights.csv', 'r') as file:
+        with open(self.data_directory / "weights.csv", "r") as file:
             for i, line in enumerate(file):
-                parts = line.strip().split(',')
+                parts = line.strip().split(",")
                 if i == 0:
                     # Validate column order OR create column map
                     for x, col in enumerate(parts):
                         col_map[col] = x
                 else:
                     pop_weight = {}
-                    category = parts[col_map['category']]
+                    category = parts[col_map["category"]]
                     for key in col_map.keys():
-                        if key != 'category':
+                        if key != "category":
                             pop_weight[key] = float(parts[col_map[key]])
                     weights[category] = pop_weight
-        
+
         return weights
