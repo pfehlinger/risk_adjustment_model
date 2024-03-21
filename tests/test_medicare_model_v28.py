@@ -62,6 +62,21 @@ def test_category_interactions():
     results = model.score(gender='F', orec='0', medicaid=False, diagnosis_codes=['F10132', 'F28'], age=67, population='CNA', verbose=False)
     assert 'gSubUseDisorder_gPsych_V28' in results.category_list
 
+    results = model.score(gender='F', orec='1', medicaid=False, diagnosis_codes=['C772'], age=60, population='INS', verbose=False)
+    assert 'DISABLED_CANCER_V28' in results.category_list
+
+    results = model.score(gender='F', orec='1', medicaid=False, diagnosis_codes=['G1220'], age=60, population='INS', verbose=False)
+    assert 'DISABLED_NEURO_V28' in results.category_list
+
+    results = model.score(gender='F', orec='1', medicaid=False, diagnosis_codes=['I5084'], age=60, population='INS', verbose=False)
+    assert 'DISABLED_HF_V28' in results.category_list
+
+    results = model.score(gender='F', orec='1', medicaid=False, diagnosis_codes=['E8419'], age=60, population='INS', verbose=False)
+    assert 'DISABLED_CHR_LUNG_V28' in results.category_list
+
+    results = model.score(gender='F', orec='1', medicaid=False, diagnosis_codes=['L89003'], age=60, population='INS', verbose=False)
+    assert 'DISABLED_ULCER_V28' in results.category_list
+
 
 def test_new_enrollee():
     model = MedicareModel('v28')

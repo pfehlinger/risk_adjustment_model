@@ -68,15 +68,15 @@ class MedicareBeneficiary(Beneficiary):
             regardless of their current status.
         """
         if age < 65 and orec != '0':
-            disabled = 1
+            disabled = True
         else:
-            disabled = 0
+            disabled = False
 
         # Should it be this: orig_disabled = (orec == '1') * (disabled == 0)
         if orec in ('1', '3') and disabled == 0:
-            orig_disabled = 1
+            orig_disabled = True
         else:
-            orig_disabled = 0
+            orig_disabled = False
         
         return disabled, orig_disabled
     

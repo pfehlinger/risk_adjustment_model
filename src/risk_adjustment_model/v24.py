@@ -36,83 +36,56 @@ def _age_sex_edit_3(age, dx_code):
         return ['NA']
 
 
-def determine_disease_interactions(categories: list) -> list:
-    cancer = False
+def determine_disease_interactions(categories: list, disabled: bool) -> list:
     cancer_list = ['HCC8', 'HCC9', 'HCC10', 'HCC11', 'HCC12']
-    diabetes = False
     diabetes_list = ['HCC17', 'HCC18', 'HCC19']
-    card_resp_fail = False
     card_resp_fail_list = ['HCC82', 'HCC83', 'HCC84']
-    chf = False
-    chf_list = ['HCC85']
-    g_copd_cf = False
     g_copd_cf_list = ['HCC110', 'HCC111', 'HCC112']
-    renal_v24 = False
     renal_v24_list = ['HCC134', 'HCC135', 'HCC136', 'HCC137', 'HCC138']
-    sepsis = False
-    sepsis_list = ['HCC2']
-    g_substance_use_disorder_v24 = False
     g_substance_use_disorder_v24_list = ['HCC54', 'HCC55', 'HCC56']
-    g_pyshiatric_v24 = False
     g_pyshiatric_v24_list = ['HCC57', 'HCC58', 'HCC59', 'HCC60']
+    pressure_ulcer_list = ['HCC157', 'HCC158', 'HCC159']
     
-    for category in cancer_list:
-        if category in categories:
-            cancer = True
-            break
-    for category in diabetes_list:
-        if category in categories:
-            diabetes = True
-            break
-    for category in card_resp_fail_list:
-        if category in categories:
-            card_resp_fail = True
-            break
-    for category in chf_list:
-        if category in categories:
-            chf = True
-            break
-    for category in g_copd_cf_list:
-        if category in categories:
-            g_copd_cf = True
-            break
-    for category in renal_v24_list:
-        if category in categories:
-            renal_v24 = True
-            break
-    for category in sepsis_list:
-        if category in categories:
-            sepsis = True
-            break
-    for category in g_substance_use_disorder_v24_list:
-        if category in categories:
-            g_substance_use_disorder_v24 = True
-            break
-    for category in g_pyshiatric_v24_list:
-        if category in categories:
-            g_pyshiatric_v24 = True
-            break
-    if 'HCC47' in categories:
-        hcc47 = True
-    else:
-        hcc47 = False    
-    if 'HCC85' in categories:
-        hcc85 = True
-    else:
-        hcc85 = False
-    if 'HCC96' in categories:
-        hcc96 = True
-    else:
-        hcc96 = False
+    cancer = any(category in categories for category in cancer_list)
+    diabetes = any(category in categories for category in diabetes_list)
+    card_resp_fail = any(category in categories for category in card_resp_fail_list)
+    chf = 'HCC85' in categories
+    g_copd_cf = any(category in categories for category in g_copd_cf_list)
+    renal_v24 = any(category in categories for category in renal_v24_list)
+    sepsis = 'HCC2' in categories
+    g_substance_use_disorder_v24 = any(category in categories for category in g_substance_use_disorder_v24_list)
+    g_pyshiatric_v24 = any(category in categories for category in g_pyshiatric_v24_list)
+    pressure_ulcer = any(category in categories for category in pressure_ulcer_list)
+    hcc47 = 'HCC47' in categories
+    hcc96 = 'HCC96' in categories
+    hcc188 = 'HCC188' in categories
+    hcc114 = 'HCC114' in categories
+    hcc57 = 'HCC57' in categories
+    hcc79 = 'HCC79' in categories
 
     interactions = {
-        'HCC47_gCancer': bool(cancer*hcc47),
-        'DIABETES_CHF': bool(diabetes*chf),
-        'CHF_gCopdCF': bool(chf*g_copd_cf),
-        'HCC85_gRenal_V24': bool(hcc85*renal_v24),
-        'gCopdCF_CARD_RESP_FAIL': bool(g_copd_cf*card_resp_fail),
-        'HCC85_HCC96': bool(hcc85*hcc96),
-        'gSubstanceUseDisorder_gPsych': bool(g_pyshiatric_v24*g_substance_use_disorder_v24)
+        'HCC47_gCancer': all([cancer, hcc47]),
+        'DIABETES_CHF': all([diabetes, chf]),
+        'CHF_gCopdCF': all([chf, g_copd_cf]),
+        'HCC85_gRenal_V24': all([chf, renal_v24]),
+        'gCopdCF_CARD_RESP_FAIL': all([g_copd_cf, card_resp_fail]),
+        'HCC85_HCC96': all([chf, hcc96]),
+        'gSubstanceUseDisorder_gPsych': all([g_pyshiatric_v24, g_substance_use_disorder_v24]),
+        'SEPSIS_PRESSURE_ULCER': all([sepsis, pressure_ulcer]),
+        'SEPSIS_ARTIF_OPENINGS': all([sepsis, hcc188]),
+        'ART_OPENINGS_PRESS_ULCER': all([hcc188, pressure_ulcer]),
+        'gCopdCF_ASP_SPEC_B_PNEUM': all([g_copd_cf, hcc114]),
+        'ASP_SPEC_B_PNEUM_PRES_ULC': all([hcc114, pressure_ulcer]),
+        'SEPSIS_ASP_SPEC_BACT_PNEUM': all([sepsis, hcc114]),
+        'SCHIZOPHRENIA_gCopdCF': all([hcc57, g_copd_cf]),
+        'SCHIZOPHRENIA_CHF': all([hcc57, chf]),
+        'SCHIZOPHRENIA_SEIZURES': all([hcc57, hcc79]),
+        'DISABLED_HCC85': all([disabled, chf]),
+        'DISABLED_PRESSURE_ULCER': all([disabled, pressure_ulcer]),
+        'DISABLED_HCC161': all([disabled, 'HCC161' in categories]),
+        'DISABLED_HCC39': all([disabled, 'HCC39' in categories]),
+        'DISABLED_HCC77': all([disabled, 'HCC77' in categories]),
+        'DISABLED_HCC6': all([disabled, 'HCC6' in categories]),
     }
     interaction_list = [key for key, value in interactions.items() if value]
 

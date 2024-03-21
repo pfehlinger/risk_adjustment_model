@@ -112,7 +112,7 @@ class MedicareCategory(Category):
         dx_categories = self._age_sex_edits(beneficiary.gender, beneficiary.age, dx_categories)
         category_dict, categories = self._get_disease_categories(dx_categories)
         hier_category_dict, categories = self._apply_hierarchies(categories)
-        interactions = self._determine_disease_interactions(categories)
+        interactions = self._determine_disease_interactions(categories, beneficiary.disabled)
         if interactions:
             categories.extend(interactions)
 
