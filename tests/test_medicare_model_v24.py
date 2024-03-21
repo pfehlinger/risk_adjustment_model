@@ -52,6 +52,51 @@ def test_category_interactions():
     results = model.score(gender='F', orec='0', medicaid=False, diagnosis_codes=['F10120', 'F28'], age=67, population='CNA', verbose=False)
     assert 'gSubstanceUseDisorder_gPsych' in results.category_list
 
+    results = model.score(gender='F', orec='1', medicaid=False, diagnosis_codes=['A021', 'L89000'], age=60, population='INS', verbose=False)
+    assert 'SEPSIS_PRESSURE_ULCER' in results.category_list
+    
+    results = model.score(gender='F', orec='1', medicaid=False, diagnosis_codes=['A021', 'Z432'], age=60, population='INS', verbose=False)
+    assert 'SEPSIS_ARTIF_OPENINGS' in results.category_list
+
+    results = model.score(gender='F', orec='1', medicaid=False, diagnosis_codes=['Z432', 'L89000'], age=60, population='INS', verbose=False)
+    assert 'ART_OPENINGS_PRESS_ULCER' in results.category_list
+
+    results = model.score(gender='F', orec='1', medicaid=False, diagnosis_codes=['J410', 'A481'], age=60, population='INS', verbose=False)
+    assert 'gCopdCF_ASP_SPEC_B_PNEUM' in results.category_list
+
+    results = model.score(gender='F', orec='1', medicaid=False, diagnosis_codes=['A481', 'L89000'], age=60, population='INS', verbose=False)
+    assert 'ASP_SPEC_B_PNEUM_PRES_ULC' in results.category_list
+
+    results = model.score(gender='F', orec='1', medicaid=False, diagnosis_codes=['A021', 'A481'], age=60, population='INS', verbose=False)
+    assert 'SEPSIS_ASP_SPEC_BACT_PNEUM' in results.category_list
+
+    results = model.score(gender='F', orec='1', medicaid=False, diagnosis_codes=['F200', 'J410'], age=60, population='INS', verbose=False)
+    assert 'SCHIZOPHRENIA_gCopdCF' in results.category_list
+
+    results = model.score(gender='F', orec='1', medicaid=False, diagnosis_codes=['F200', 'A3681'], age=60, population='INS', verbose=False)
+    assert 'SCHIZOPHRENIA_CHF' in results.category_list
+
+    results = model.score(gender='F', orec='1', medicaid=False, diagnosis_codes=['F200', 'G40009'], age=60, population='INS', verbose=False)
+    assert 'SCHIZOPHRENIA_SEIZURES' in results.category_list
+
+    results = model.score(gender='F', orec='1', medicaid=False, diagnosis_codes=['A3681'], age=60, population='INS', verbose=False)
+    assert 'DISABLED_HCC85' in results.category_list
+
+    results = model.score(gender='F', orec='1', medicaid=False, diagnosis_codes=['L89000'], age=60, population='INS', verbose=False)
+    assert 'DISABLED_PRESSURE_ULCER' in results.category_list
+
+    results = model.score(gender='F', orec='1', medicaid=False, diagnosis_codes=['L97101'], age=60, population='INS', verbose=False)
+    assert 'DISABLED_HCC161' in results.category_list
+
+    results = model.score(gender='F', orec='1', medicaid=False, diagnosis_codes=['M0000'], age=60, population='INS', verbose=False)
+    assert 'DISABLED_HCC39' in results.category_list
+
+    results = model.score(gender='F', orec='1', medicaid=False, diagnosis_codes=['G360'], age=60, population='INS', verbose=False)
+    assert 'DISABLED_HCC77' in results.category_list
+
+    results = model.score(gender='F', orec='1', medicaid=False, diagnosis_codes=['A072'], age=60, population='INS', verbose=False)
+    assert 'DISABLED_HCC6' in results.category_list
+
 
 def test_new_enrollee():
     model = MedicareModel('v24')
