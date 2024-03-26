@@ -169,14 +169,17 @@ def determine_demographic_cats(age, gender, population):
     return demographic_category
 
 
-def determine_demographic_interactions(gender, orig_disabled):
+def determine_demographic_interactions(gender, orig_disabled, medicaid):
     """
     Depending on model this may change
     """
-    demo_interaction = None
+    demo_interactions = []
     if gender == "F" and orig_disabled == 1:
-        demo_interaction = "OriginallyDisabled_Female"
+        demo_interactions.append("OriginallyDisabled_Female")
     elif gender == "M" and orig_disabled == 1:
-        demo_interaction = "OriginallyDisabled_Male"
+        demo_interactions.append("OriginallyDisabled_Male")
 
-    return demo_interaction
+    if medicaid:
+        demo_interactions.append("LTIMCAID")
+
+    return demo_interactions

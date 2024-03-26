@@ -90,26 +90,37 @@ class MedicareModel:
                 category
                 for dx_code in dx_categories
                 for category in dx_code.category
-                if category != "NA"
+                if category is not None and category != "NA"
             )
-            hier_category_dict, disease_categories = self._apply_hierarchies(
-                unique_disease_cats
-            )
-            interactions = self._determine_disease_interactions(
-                disease_categories, beneficiary.disabled
-            )
-            if interactions:
-                disease_categories.extend(interactions)
+            if unique_disease_cats:
+                hier_category_dict, disease_categories = self._apply_hierarchies(
+                    unique_disease_cats
+                )
+                interactions = self._determine_disease_interactions(
+                    disease_categories, beneficiary.disabled
+                )
+                if interactions:
+                    disease_categories.extend(interactions)
 
-            for category in disease_categories:
-                cat_dict[category] = {
-                    "dropped_categories": hier_category_dict.get(category, None),
-                    "diagnosis_map": [
+                for category in disease_categories:
+                    # This is done to obtain a consistent output for diagnosis map
+                    # If there are no diagnosis codes mapping to the category it should
+                    # return None, as opposed to an empty list. The below statement making
+                    # the map would create an empty list, thus the if statement following
+                    # to catch that and modify it
+                    diagnosis_map = [
                         dx_code.diagnosis_code
                         for dx_code in dx_categories
-                        if dx_code.category == category
-                    ],
-                }
+                        if category in dx_code.category
+                    ]
+                    if not diagnosis_map:
+                        diagnosis_map = None
+                    cat_dict[category] = {
+                        "dropped_categories": hier_category_dict.get(category, None),
+                        "diagnosis_map": diagnosis_map,
+                    }
+            else:
+                disease_categories = None
         else:
             disease_categories = None
             cat_dict = {}
@@ -178,10 +189,10 @@ class MedicareModel:
             )
         )
         demo_int = self._determine_demographic_interactions(
-            beneficiary.gender, beneficiary.orig_disabled
+            beneficiary.gender, beneficiary.orig_disabled, beneficiary.medicaid
         )
         if demo_int:
-            demo_cats.append(demo_int)
+            demo_cats.extend(demo_int)
 
         return demo_cats
 
@@ -236,19 +247,27 @@ class MedicareModel:
         # Combine the dictionaries to make output
         category_details = {}
         for category in categories:
+            if category_dict.get(category.category, None):
+                dropped_categories = category_dict[category.category][
+                    "dropped_categories"
+                ]
+                diagnosis_map = category_dict[category.category]["diagnosis_map"]
+            else:
+                dropped_categories = None
+                diagnosis_map = None
             if verbose:
                 category_details[category.category] = {
                     "coefficient": category.coefficient,
                     "type": category.type,
                     "category_number": category.number,
                     "category_description": category.description,
-                    "dropped_categories": category_dict.get(category, None),
-                    "diagnosis_map": category_dict.get(category, None),
+                    "dropped_categories": dropped_categories,
+                    "diagnosis_map": diagnosis_map,
                 }
             else:
                 category_details[category.category] = {
                     "coefficient": category.coefficient,
-                    "diagnosis_map": category_dict.get(category, None),
+                    "diagnosis_map": diagnosis_map,
                 }
 
         return category_details

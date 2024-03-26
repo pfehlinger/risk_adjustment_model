@@ -10,7 +10,7 @@ class DxCodeCategory:
 
     def __init__(self, config, diagnosis_code):
         self.diagnosis_code = diagnosis_code
-        self.category = config.diag_to_category_map[diagnosis_code]
+        self.category = config.diag_to_category_map.get(diagnosis_code, [None])
 
 
 class MedicareDxCodeCategory(DxCodeCategory):

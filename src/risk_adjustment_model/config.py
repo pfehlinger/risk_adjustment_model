@@ -92,7 +92,7 @@ class Config:
         with open(self.data_directory / "diag_to_category_map.txt", "r") as file:
             for line in file:
                 # Split the line based on the delimiter
-                parts = line.strip().split("|")
+                parts = line.strip().split("\t")
                 diag = parts[0].strip()
                 category = "HCC" + parts[1].strip()
                 if diag not in diag_to_category_map:
