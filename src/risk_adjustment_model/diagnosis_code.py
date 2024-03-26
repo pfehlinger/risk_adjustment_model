@@ -8,9 +8,9 @@ class DxCodeCategory:
     This class is to encapsulate a diagnosis code and what category it maps to
     """
 
-    def __init__(self, config, diagnosis_code):
+    def __init__(self, diag_to_category_map, diagnosis_code):
         self.diagnosis_code = diagnosis_code
-        self.category = config.diag_to_category_map.get(diagnosis_code, [None])
+        self.category = diag_to_category_map.get(diagnosis_code, [None])
 
 
 class MedicareDxCodeCategory(DxCodeCategory):
@@ -19,9 +19,9 @@ class MedicareDxCodeCategory(DxCodeCategory):
     age sex edits appropriate for the model version.
     """
 
-    def __init__(self, config, diagnosis_code, beneficiary):
-        super().__init__(config, diagnosis_code)
-        self._age_sex_edits = import_function("." + config.version, "age_sex_edits")
+    def __init__(self, diag_to_category_map, diagnosis_code, beneficiary, version):
+        super().__init__(diag_to_category_map, diagnosis_code)
+        self._age_sex_edits = import_function("." + version, "age_sex_edits")
         self._edit_category = self._age_sex_edits(
             beneficiary.gender, beneficiary.age, self.diagnosis_code
         )

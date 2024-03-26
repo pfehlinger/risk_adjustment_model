@@ -1,4 +1,4 @@
-from .config import Config
+from .base_model import BaseModel
 from .beneficiary import MedicareBeneficiary
 from .category import Category
 from .output import ScoringResults
@@ -6,7 +6,7 @@ from .diagnosis_code import MedicareDxCodeCategory
 from .utilities import import_function
 
 
-class MedicareModel:
+class MedicareModel(BaseModel):
     """
     This is the foundation for Medicare Models. It is not to be called directly. It loads all relevant information for that model
     and year as class attributes.
@@ -21,7 +21,7 @@ class MedicareModel:
     """
 
     def __init__(self, version: str, year=None):
-        self.config = Config(version, year)
+        super().__init__(version, year)
         self.coding_intensity_adjuster = self._get_coding_intensity_adjuster(
             self.config.model_year
         )
@@ -81,7 +81,9 @@ class MedicareModel:
         if diagnosis_codes:
             cat_dict = {}
             dx_categories = [
-                MedicareDxCodeCategory(self.config, diagnosis_code, beneficiary)
+                MedicareDxCodeCategory(
+                    self.diag_to_category_map, diagnosis_code, beneficiary, self.version
+                )
                 for diagnosis_code in diagnosis_codes
             ]
             # Some diagnosis codes go to more than one category thus the category is a list
