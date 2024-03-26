@@ -1,22 +1,16 @@
 from .utilities import determine_age_band
 
 
-def age_sex_edits(gender, age, dx_categories):
-    for diagnosis_code in dx_categories.keys():
-        new_category = _age_sex_edit_1(gender, diagnosis_code)
-        if new_category:
-            dx_categories[diagnosis_code] = new_category
-            break
-        new_category = _age_sex_edit_2(age, diagnosis_code)
-        if new_category:
-            dx_categories[diagnosis_code] = new_category
-            break
-        new_category = _age_sex_edit_3(age, diagnosis_code)
-        if new_category:
-            dx_categories[diagnosis_code] = new_category
-            break
-
-    return dx_categories
+def age_sex_edits(gender, age, diagnosis_code):
+    new_category = _age_sex_edit_1(gender, diagnosis_code)
+    if new_category:
+        return new_category
+    new_category = _age_sex_edit_2(age, diagnosis_code)
+    if new_category:
+        return new_category
+    new_category = _age_sex_edit_3(age, diagnosis_code)
+    if new_category:
+        return new_category
 
 
 def _age_sex_edit_1(gender, dx_code):
@@ -175,14 +169,17 @@ def determine_demographic_cats(age, gender, population):
     return demographic_category
 
 
-def determine_demographic_interactions(gender, orig_disabled):
+def determine_demographic_interactions(gender, orig_disabled, medicaid):
     """
     Depending on model this may change
     """
-    demo_interaction = None
+    demo_interactions = []
     if gender == "F" and orig_disabled == 1:
-        demo_interaction = "OriginallyDisabled_Female"
+        demo_interactions.append("OriginallyDisabled_Female")
     elif gender == "M" and orig_disabled == 1:
-        demo_interaction = "OriginallyDisabled_Male"
+        demo_interactions.append("OriginallyDisabled_Male")
 
-    return demo_interaction
+    if medicaid:
+        demo_interactions.append("LTIMCAID")
+
+    return demo_interactions

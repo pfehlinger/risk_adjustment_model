@@ -65,7 +65,7 @@ def test_demo_category_mapping():
         gender="F",
         orec="0",
         medicaid=True,
-        diagnosis_codes=["I209"],
+        diagnosis_codes=["I2109"],
         age=86,
         population="CNA",
         verbose=False,
@@ -314,8 +314,8 @@ def test_raw_score():
         gender="F",
         orec="0",
         medicaid=False,
-        diagnosis_codes=["E1169", "I5030", "I509", "I211", "I209", "R05"],
+        diagnosis_codes=["E1169", "I5030", "I509", "I2111", "I2109"],
         age=45,
         population="CND",
     )
-    assert isclose(results.score_raw, 0.996)
+    assert isclose(results.score_raw, 1.250)
