@@ -1,9 +1,9 @@
+from .utilities import determine_age_band
 from .base_model import BaseModel
 from .beneficiary import MedicareBeneficiary
 from .category import Category
 from .output import ScoringResults
-from .diagnosis_code import MedicareDxCodeCategory
-from .utilities import import_function
+from .diagnosis_code import MedicareDxCodeCategoryV24
 
 
 class MedicareModel(BaseModel):
@@ -21,22 +21,13 @@ class MedicareModel(BaseModel):
     """
 
     def __init__(self, version: str, year=None):
-        super().__init__(version, year)
+        super().__init__("medicare", version, year)
         self.coding_intensity_adjuster = self._get_coding_intensity_adjuster(
-            self.config.model_year
+            self.model_year
         )
         # PF: This will break for the models that have different normalization factors, will have to refactor once implemented
         self.normalization_factor = self._get_normalization_factor(
-            version, self.config.model_year
-        )
-        self._determine_demographic_cats = import_function(
-            "." + self.config.version, "determine_demographic_cats"
-        )
-        self._determine_demographic_interactions = import_function(
-            "." + self.config.version, "determine_demographic_interactions"
-        )
-        self._determine_disease_interactions = import_function(
-            "." + self.config.version, "determine_disease_interactions"
+            version, self.model_year
         )
 
     def score(
@@ -80,12 +71,7 @@ class MedicareModel(BaseModel):
 
         if diagnosis_codes:
             cat_dict = {}
-            dx_categories = [
-                MedicareDxCodeCategory(
-                    self.diag_to_category_map, diagnosis_code, beneficiary, self.version
-                )
-                for diagnosis_code in diagnosis_codes
-            ]
+            dx_categories = self._get_dx_categories(diagnosis_codes, beneficiary)
             # Some diagnosis codes go to more than one category thus the category is a list
             # and it is a two step process to unpack them
             unique_disease_cats = set(
@@ -111,7 +97,7 @@ class MedicareModel(BaseModel):
                     # the map would create an empty list, thus the if statement following
                     # to catch that and modify it
                     diagnosis_map = [
-                        dx_code.diagnosis_code
+                        dx_code.mapper_code
                         for dx_code in dx_categories
                         if category in dx_code.category
                     ]
@@ -132,7 +118,7 @@ class MedicareModel(BaseModel):
         else:
             unique_categories = demo_categories
         categories = [
-            Category(self.config, beneficiary.risk_model_population, category)
+            Category(self.data_directory, beneficiary.risk_model_population, category)
             for category in unique_categories
         ]
 
@@ -161,12 +147,12 @@ class MedicareModel(BaseModel):
             age=beneficiary.age,
             dob=beneficiary.dob,
             diagnosis_codes=diagnosis_codes,
-            year=self.config.year,
+            year=self.year,
             population=beneficiary.population,
             risk_model_age=beneficiary.risk_model_age,
             risk_model_population=beneficiary.risk_model_population,
-            model_version=self.config.version,
-            model_year=self.config.model_year,
+            model_version=self.version,
+            model_year=self.model_year,
             coding_intensity_adjuster=self.coding_intensity_adjuster,
             normalization_factor=self.normalization_factor,
             score_raw=score_raw,
@@ -212,18 +198,10 @@ class MedicareModel(BaseModel):
         categories_dict = {}
         dropped_codes_total = []
 
-        # Patch for V28 Heart Conditions
-        if self.config.version == "v28":
-            if "HCC223" in category_list and not any(
-                category in category_list
-                for category in ["HCC221", "HCC222", "HCC224", "HCC225", "HCC226"]
-            ):
-                category_list.remove("HCC223")
-
         for category in category_list:
             dropped_codes = []
-            if category in self.config.hierarchy_definitions.keys():
-                for remove_category in self.config.hierarchy_definitions[category][
+            if category in self.hierarchy_definitions.keys():
+                for remove_category in self.hierarchy_definitions[category][
                     "remove_code"
                 ]:
                     try:
@@ -334,3 +312,95 @@ class MedicareModel(BaseModel):
             normalization_factor = 1
 
         return normalization_factor
+
+    def _get_dx_categories(self, diagnosis_codes, beneficiary):
+        dx_categories = [
+            MedicareDxCodeCategoryV24(self.filepath, diagnosis_code, beneficiary)
+            for diagnosis_code in diagnosis_codes
+        ]
+
+        return dx_categories
+
+    # -- To be overwritten by each model class as need
+    def _determine_disease_interactions(self, categories: list, disabled: bool) -> list:
+        interaction_list = []
+        category_count = self._get_payment_count_categories(categories)
+        if category_count:
+            interaction_list.append(category_count)
+
+        return interaction_list
+
+    def _get_payment_count_categories(self, categories: list):
+        """"""
+        category_count = len(categories)
+        category = None
+        if category_count > 9:
+            category = "D10P"
+        elif category_count > 0:
+            category = f"D{category_count}"
+
+        return category
+
+    def _determine_demographic_cats(self, age, gender, population):
+        """
+        This may need to be overwritten depending on the mechanices of the model.
+        Ranges may change, the population may change, etc.
+        """
+        if population[:2] == "NE":
+            demo_category_ranges = [
+                "0_34",
+                "35_44",
+                "45_54",
+                "55_59",
+                "60_64",
+                "65",
+                "66",
+                "67",
+                "68",
+                "69",
+                "70_74",
+                "75_79",
+                "80_84",
+                "85_89",
+                "90_94",
+                "95_GT",
+            ]
+        else:
+            demo_category_ranges = [
+                "0_34",
+                "35_44",
+                "45_54",
+                "55_59",
+                "60_64",
+                "65_69",
+                "70_74",
+                "75_79",
+                "80_84",
+                "85_89",
+                "90_94",
+                "95_GT",
+            ]
+
+        demographic_category_range = determine_age_band(age, demo_category_ranges)
+
+        if population[:2] == "NE":
+            demographic_category = f"NE{gender}{demographic_category_range}"
+        else:
+            demographic_category = f"{gender}{demographic_category_range}"
+
+        return demographic_category
+
+    def _determine_demographic_interactions(self, gender, orig_disabled, medicaid):
+        """
+        Depending on model this may change
+        """
+        demo_interactions = []
+        if gender == "F" and orig_disabled == 1:
+            demo_interactions.append("OriginallyDisabled_Female")
+        elif gender == "M" and orig_disabled == 1:
+            demo_interactions.append("OriginallyDisabled_Male")
+
+        if medicaid:
+            demo_interactions.append("LTIMCAID")
+
+        return demo_interactions
