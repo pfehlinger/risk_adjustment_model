@@ -1,6 +1,6 @@
 from .utilities import determine_age_band
-from .medicare_model import MedicareModel
-from .diagnosis_code import MedicareDxCodeCategoryV24
+from .model import MedicareModel
+from .mapper import DxCodeCategory
 
 
 class MedicareModelV24(MedicareModel):
@@ -60,11 +60,56 @@ class MedicareModelV24(MedicareModel):
 
     def _get_dx_categories(self, diagnosis_codes, beneficiary):
         dx_categories = [
-            MedicareDxCodeCategoryV24(self.data_directory, diagnosis_code, beneficiary)
+            DxCodeCategory(self.data_directory, diagnosis_code)
             for diagnosis_code in diagnosis_codes
         ]
 
+        for dx in dx_categories:
+            edit_category = self.age_sex_edits(
+                beneficiary.gender, beneficiary.age, self.mapper_code
+            )
+            if edit_category:
+                dx.category = edit_category
+
         return dx_categories
+
+    def age_sex_edits(self, gender, age, diagnosis_code):
+        new_category = self._age_sex_edit_1(gender, diagnosis_code)
+        if new_category:
+            return new_category
+        new_category = self._age_sex_edit_2(age, diagnosis_code)
+        if new_category:
+            return new_category
+        new_category = self._age_sex_edit_3(age, diagnosis_code)
+        if new_category:
+            return new_category
+
+    def _age_sex_edit_1(self, gender, dx_code):
+        if gender == "F" and dx_code in ["D66", "D67"]:
+            return ["HCC48"]
+
+    def _age_sex_edit_2(self, age, dx_code):
+        if age < 18 and dx_code in [
+            "J410",
+            "J411",
+            "J418",
+            "J42",
+            "J430",
+            "J431",
+            "J432",
+            "J438",
+            "J439",
+            "J440",
+            "J441",
+            "J449",
+            "J982",
+            "J983",
+        ]:
+            return ["HCC112"]
+
+    def _age_sex_edit_3(self, age, dx_code):
+        if (age < 6 or age > 18) and dx_code == "F3481":
+            return ["NA"]
 
     def _determine_disease_interactions(self, categories: list, disabled: bool) -> list:
         cancer_list = ["HCC8", "HCC9", "HCC10", "HCC11", "HCC12"]
