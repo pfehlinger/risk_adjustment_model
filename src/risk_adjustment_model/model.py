@@ -5,7 +5,7 @@ from pathlib import Path
 from .utilities import determine_age_band
 from .beneficiary import MedicareBeneficiary
 from .category import Category
-from .output import ScoringResults
+from .result import ScoringResult
 from .mapper import DxCodeCategory
 
 
@@ -143,47 +143,39 @@ class MedicareModel(BaseModel):
                 for category in dx_code.category
                 if category is not None and category != "NA"
             )
-            if unique_disease_cats:
-                hier_category_dict, disease_categories = self._apply_hierarchies(
-                    unique_disease_cats
-                )
-                interactions = self._determine_disease_interactions(
-                    disease_categories, beneficiary.disabled
-                )
-                if interactions:
-                    disease_categories.extend(interactions)
 
-                for category in disease_categories:
-                    # This is done to obtain a consistent output for diagnosis map
-                    # If there are no diagnosis codes mapping to the category it should
-                    # return None, as opposed to an empty list. The below statement making
-                    # the map would create an empty list, thus the if statement following
-                    # to catch that and modify it
-                    diagnosis_map = [
-                        dx_code.mapper_code
-                        for dx_code in dx_categories
-                        if category in dx_code.category
-                    ]
-                    if not diagnosis_map:
-                        diagnosis_map = None
-                    cat_dict[category] = {
-                        "dropped_categories": hier_category_dict.get(category, None),
-                        "diagnosis_map": diagnosis_map,
-                    }
-            else:
-                disease_categories = None
+            for category in unique_disease_cats:
+                # This is done to obtain a consistent output for diagnosis map
+                # If there are no diagnosis codes mapping to the category it should
+                # return None, as opposed to an empty list. The below statement making
+                # the map would create an empty list, thus the if statement following
+                # to catch that and modify it
+                diagnosis_map = [
+                    dx_code.mapper_code
+                    for dx_code in dx_categories
+                    if category in dx_code.category
+                ]
+                cat_dict[category] = diagnosis_map
         else:
-            disease_categories = None
             cat_dict = {}
+            unique_disease_cats = None
 
-        if disease_categories:
-            unique_categories = demo_categories + disease_categories
+        if unique_disease_cats:
+            unique_categories = demo_categories + list(unique_disease_cats)
         else:
             unique_categories = demo_categories
+
         categories = [
-            Category(self.data_directory, beneficiary.risk_model_population, category)
+            Category(
+                self.data_directory,
+                beneficiary.risk_model_population,
+                category,
+                cat_dict.get(category),
+            )
             for category in unique_categories
         ]
+        categories = self._apply_hierarchies(categories)
+        categories = self._determine_disease_interactions(categories, beneficiary)
 
         score_raw = sum([category.coefficient for category in categories])
         disease_score_raw = sum(
@@ -201,9 +193,9 @@ class MedicareModel(BaseModel):
             ]
         )
 
-        category_details = self._build_category_details(categories, cat_dict, verbose)
+        category_details = self._build_category_details(categories, verbose)
 
-        output_dict = ScoringResults(
+        output_dict = ScoringResult(
             gender=beneficiary.gender,
             orec=beneficiary.orec,
             medicaid=beneficiary.medicaid,
@@ -224,7 +216,7 @@ class MedicareModel(BaseModel):
             score=self._apply_norm_factor_coding_adj(score_raw),
             disease_score=self._apply_norm_factor_coding_adj(disease_score_raw),
             demographic_score=self._apply_norm_factor_coding_adj(demographic_score_raw),
-            category_list=unique_categories,
+            category_list=[category.category for category in categories],
             category_details=category_details,
         )
 
@@ -247,70 +239,56 @@ class MedicareModel(BaseModel):
 
         return demo_cats
 
-    def _apply_hierarchies(self, categories: set) -> dict:
+    def _apply_hierarchies(self, categories: list) -> dict:
         """
-        Takes in a unique set of categories and removes categories that fall into
-        hierarchies as outlined in the hierarchy_definition file.
+        Takes in a list containing category objects and removes categories that fall
+        into hierarchies as outlined in the hierarchy_definition file.
 
         Returns:
-            dict containing the remaining categories and any categories "dropped"
-            by that category.
-
+            list a of category objects
         """
-        category_list = list(categories)
-        categories_dict = {}
+        category_list = [category.category for category in categories]
         dropped_codes_total = []
 
-        for category in category_list:
+        for category in categories:
             dropped_codes = []
-            if category in self.hierarchy_definitions.keys():
-                for remove_category in self.hierarchy_definitions[category][
+            if category.category in self.hierarchy_definitions.keys():
+                for remove_category in self.hierarchy_definitions[category.category][
                     "remove_code"
                 ]:
-                    try:
-                        category_list.remove(remove_category)
-                    except ValueError:
-                        pass
-                    else:
+                    if remove_category in category_list:
                         dropped_codes.append(remove_category)
                         dropped_codes_total.append(remove_category)
-                if not dropped_codes:
-                    categories_dict[category] = None
-                else:
-                    categories_dict[category] = dropped_codes
 
-        # Fill in remaining categories
-        for category in category_list:
-            if category not in dropped_codes_total:
-                categories_dict[category] = None
+            if dropped_codes:
+                category.dropped_categories = dropped_codes
 
-        return categories_dict, category_list
+        # Remove objects from list
+        final_categories = [
+            category
+            for category in categories
+            if category.category not in dropped_codes_total
+        ]
 
-    def _build_category_details(self, categories, category_dict, verbose):
+        return final_categories
+
+    def _build_category_details(self, categories, verbose):
         # Combine the dictionaries to make output
         category_details = {}
         for category in categories:
-            if category_dict.get(category.category, None):
-                dropped_categories = category_dict[category.category][
-                    "dropped_categories"
-                ]
-                diagnosis_map = category_dict[category.category]["diagnosis_map"]
-            else:
-                dropped_categories = None
-                diagnosis_map = None
             if verbose:
                 category_details[category.category] = {
                     "coefficient": category.coefficient,
                     "type": category.type,
                     "category_number": category.number,
                     "category_description": category.description,
-                    "dropped_categories": dropped_categories,
-                    "diagnosis_map": diagnosis_map,
+                    "dropped_categories": category.dropped_categories,
+                    "diagnosis_map": category.mapper_codes,
                 }
             else:
                 category_details[category.category] = {
                     "coefficient": category.coefficient,
-                    "diagnosis_map": diagnosis_map,
+                    "diagnosis_map": category.mapper_codes,
                 }
 
         return category_details
@@ -392,13 +370,20 @@ class MedicareModel(BaseModel):
         return dx_categories
 
     # -- To be overwritten by each model class as need
-    def _determine_disease_interactions(self, categories: list, disabled: bool) -> list:
+    def _determine_disease_interactions(self, categories: list, beneficiary) -> list:
         interaction_list = []
         category_count = self._get_payment_count_categories(categories)
         if category_count:
             interaction_list.append(category_count)
 
-        return interaction_list
+        interactions = [
+            Category(self.data_directory, beneficiary.risk_model_population, category)
+            for category in interaction_list
+        ]
+
+        interactions.append(categories)
+
+        return interactions
 
     def _get_payment_count_categories(self, categories: list):
         """"""

@@ -1,6 +1,7 @@
 from .utilities import determine_age_band
 from .model import MedicareModel
 from .mapper import DxCodeCategory
+from .category import Category
 
 
 class MedicareModelV28(MedicareModel):
@@ -19,22 +20,17 @@ class MedicareModelV28(MedicareModel):
 
     def __init__(self, year=None):
         super().__init__("v28", year)
-        self.normalization_factor = self._get_normalization_factor(
-            self.version, self.model_year
-        )
+        self.normalization_factor = self._get_normalization_factor(self.model_year)
 
-    def _apply_hierarchies(self, categories: set) -> dict:
+    def _apply_hierarchies(self, categories: list) -> dict:
         """
-        Takes in a unique set of categories and removes categories that fall into
-        hierarchies as outlined in the hierarchy_definition file.
+        Takes in a list containing category objects and removes categories that fall
+        into hierarchies as outlined in the hierarchy_definition file.
 
         Returns:
-            dict containing the remaining categories and any categories "dropped"
-            by that category.
-
+            list a of category objects
         """
-        category_list = list(categories)
-        categories_dict = {}
+        category_list = [category.category for category in categories]
         dropped_codes_total = []
 
         # Patch for V28 Heart Conditions
@@ -42,34 +38,31 @@ class MedicareModelV28(MedicareModel):
             category in category_list
             for category in ["HCC221", "HCC222", "HCC224", "HCC225", "HCC226"]
         ):
-            category_list.remove("HCC223")
+            dropped_codes_total.append("HCC223")
 
-        for category in category_list:
+        for category in categories:
             dropped_codes = []
-            if category in self.hierarchy_definitions.keys():
-                for remove_category in self.hierarchy_definitions[category][
+            if category.category in self.hierarchy_definitions.keys():
+                for remove_category in self.hierarchy_definitions[category.category][
                     "remove_code"
                 ]:
-                    try:
-                        category_list.remove(remove_category)
-                    except ValueError:
-                        pass
-                    else:
+                    if remove_category in category_list:
                         dropped_codes.append(remove_category)
                         dropped_codes_total.append(remove_category)
-                if not dropped_codes:
-                    categories_dict[category] = None
-                else:
-                    categories_dict[category] = dropped_codes
 
-        # Fill in remaining categories
-        for category in category_list:
-            if category not in dropped_codes_total:
-                categories_dict[category] = None
+            if dropped_codes:
+                category.dropped_categories = dropped_codes
 
-        return categories_dict, category_list
+        # Remove objects from list
+        final_categories = [
+            category
+            for category in categories
+            if category.category not in dropped_codes_total
+        ]
 
-    def _get_normalization_factor(self, version, year, model_group="C") -> float:
+        return final_categories
+
+    def _get_normalization_factor(self, year) -> float:
         """
 
         C = Commmunity
@@ -80,21 +73,11 @@ class MedicareModelV28(MedicareModel):
             float: The normalization factor.
         """
         norm_factor_dict = {
-            "v24": {
-                2020: {"C": 1.069},
-                2021: {"C": 1.097},
-                2022: {"C": 1.118},
-                2023: {"C": 1.127},
-                2024: {"C": 1.146},
-                2025: {"C": 1.153},
-            },
-            "v28": {
-                2024: {"C": 1.015},
-                2025: {"C": 1.045},
-            },
+            2024: 1.015,
+            2025: 1.045,
         }
         try:
-            normalization_factor = norm_factor_dict[version][year][model_group]
+            normalization_factor = norm_factor_dict[year]
         except KeyError:
             normalization_factor = 1
 
@@ -102,9 +85,16 @@ class MedicareModelV28(MedicareModel):
 
     def _get_dx_categories(self, diagnosis_codes, beneficiary):
         dx_categories = [
-            DxCodeCategory(self.data_directory, diagnosis_code, beneficiary)
+            DxCodeCategory(self.data_directory, diagnosis_code)
             for diagnosis_code in diagnosis_codes
         ]
+
+        for dx in dx_categories:
+            edit_category = self.age_sex_edits(
+                beneficiary.gender, beneficiary.age, dx.mapper_code
+            )
+            if edit_category:
+                dx.category = edit_category
 
         return dx_categories
 
@@ -241,7 +231,10 @@ class MedicareModelV28(MedicareModel):
         ]:
             return ["NA"]
 
-    def _determine_disease_interactions(self, categories: list, disabled: bool) -> list:
+    def _determine_disease_interactions(self, categories: list, beneficiary) -> list:
+        category_list = [
+            category.category for category in categories if category.type == "disease"
+        ]
         cancer_list = ["HCC17", "HCC18", "HCC19", "HCC20", "HCC21", "HCC22", "HCC23"]
         diabetes_list = ["HCC35", "HCC36", "HCC37", "HCC38"]
         card_resp_fail_list = ["HCC211", "HCC212", "HCC213"]
@@ -270,23 +263,25 @@ class MedicareModelV28(MedicareModel):
         ]
         ulcer_v28_list = ["HCC379", "HCC380", "HCC381", "HCC382"]
 
-        cancer = any(category in categories for category in cancer_list)
-        diabetes = any(category in categories for category in diabetes_list)
-        card_resp_fail = any(category in categories for category in card_resp_fail_list)
-        hf = any(category in categories for category in hf_list)
-        chr_lung = any(category in categories for category in chr_lung_list)
-        kidney_v28 = any(category in categories for category in kidney_v28_list)
+        cancer = any(category in category_list for category in cancer_list)
+        diabetes = any(category in category_list for category in diabetes_list)
+        card_resp_fail = any(
+            category in category_list for category in card_resp_fail_list
+        )
+        hf = any(category in category_list for category in hf_list)
+        chr_lung = any(category in category_list for category in chr_lung_list)
+        kidney_v28 = any(category in category_list for category in kidney_v28_list)
         g_substance_use_disorder_v28 = any(
-            category in categories for category in g_substance_use_disorder_v28_list
+            category in category_list for category in g_substance_use_disorder_v28_list
         )
         g_pyshiatric_v28 = any(
-            category in categories for category in g_pyshiatric_v28_list
+            category in category_list for category in g_pyshiatric_v28_list
         )
-        neuro_v28 = any(category in categories for category in neuro_v28_list)
-        ulcer_v28 = any(category in categories for category in ulcer_v28_list)
-        hcc238 = "HCC238" in categories
+        neuro_v28 = any(category in category_list for category in neuro_v28_list)
+        ulcer_v28 = any(category in category_list for category in ulcer_v28_list)
+        hcc238 = "HCC238" in category_list
 
-        interactions = {
+        interactions_dict = {
             "DIABETES_HF_V28": all([diabetes, hf]),
             "HF_CHR_LUNG_V28": all([hf, chr_lung]),
             "HF_KIDNEY_V28": all([hf, kidney_v28]),
@@ -295,17 +290,24 @@ class MedicareModelV28(MedicareModel):
             "gSubUseDisorder_gPsych_V28": all(
                 [g_substance_use_disorder_v28, g_pyshiatric_v28]
             ),
-            "DISABLED_CANCER_V28": all([disabled, cancer]),
-            "DISABLED_NEURO_V28": all([disabled, neuro_v28]),
-            "DISABLED_HF_V28": all([disabled, hf]),
-            "DISABLED_CHR_LUNG_V28": all([disabled, chr_lung]),
-            "DISABLED_ULCER_V28": all([disabled, ulcer_v28]),
+            "DISABLED_CANCER_V28": all([beneficiary.disabled, cancer]),
+            "DISABLED_NEURO_V28": all([beneficiary.disabled, neuro_v28]),
+            "DISABLED_HF_V28": all([beneficiary.disabled, hf]),
+            "DISABLED_CHR_LUNG_V28": all([beneficiary.disabled, chr_lung]),
+            "DISABLED_ULCER_V28": all([beneficiary.disabled, ulcer_v28]),
         }
-        interaction_list = [key for key, value in interactions.items() if value]
+        interaction_list = [key for key, value in interactions_dict.items() if value]
 
-        category_count = self._get_payment_count_categories(categories)
+        category_count = self._get_payment_count_categories(category_list)
         if category_count:
             interaction_list.append(category_count)
+        interactions = [
+            Category(self.data_directory, beneficiary.risk_model_population, category)
+            for category in interaction_list
+        ]
+        interactions.extend(categories)
+
+        return interactions
 
         return interaction_list
 

@@ -82,7 +82,8 @@ def test_age_sex_edits():
         population="CPD",
         verbose=False,
     )
-    assert len(results.category_list) == 1
+    # LTIMCAID shows in addition to the demographic
+    assert len(results.category_list) == 2
 
 
 def test_category_interactions():

@@ -3,7 +3,7 @@ from dataclasses import dataclass
 
 # PF: This could be refactored to use inheritance or have one per LOB I think
 @dataclass
-class ScoringResults:
+class ScoringResult:
     gender: str
     orec: str
     medicaid: bool

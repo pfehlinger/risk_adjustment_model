@@ -1,6 +1,7 @@
 from .utilities import determine_age_band
 from .model import MedicareModel
 from .mapper import DxCodeCategory
+from .category import Category
 
 
 class MedicareModelV24(MedicareModel):
@@ -19,40 +20,24 @@ class MedicareModelV24(MedicareModel):
 
     def __init__(self, year=None):
         super().__init__("v24", year)
-        self.coding_intensity_adjuster = self._get_coding_intensity_adjuster(
-            self.model_year
-        )
-        # PF: This will break for the models that have different normalization factors, will have to refactor once implemented
-        self.normalization_factor = self._get_normalization_factor(
-            self.version, self.model_year
-        )
+        self.normalization_factor = self._get_normalization_factor(self.model_year)
 
-    def _get_normalization_factor(self, version, year, model_group="C") -> float:
+    def _get_normalization_factor(self, year) -> float:
         """
-
-        C = Commmunity
-        D = Dialysis
-        G = Graft
 
         Returns:
             float: The normalization factor.
         """
         norm_factor_dict = {
-            "v24": {
-                2020: {"C": 1.069},
-                2021: {"C": 1.097},
-                2022: {"C": 1.118},
-                2023: {"C": 1.127},
-                2024: {"C": 1.146},
-                2025: {"C": 1.153},
-            },
-            "v28": {
-                2024: {"C": 1.015},
-                2025: {"C": 1.045},
-            },
+            2020: 1.069,
+            2021: 1.097,
+            2022: 1.118,
+            2023: 1.127,
+            2024: 1.146,
+            2025: 1.153,
         }
         try:
-            normalization_factor = norm_factor_dict[version][year][model_group]
+            normalization_factor = norm_factor_dict[year]
         except KeyError:
             normalization_factor = 1
 
@@ -66,7 +51,7 @@ class MedicareModelV24(MedicareModel):
 
         for dx in dx_categories:
             edit_category = self.age_sex_edits(
-                beneficiary.gender, beneficiary.age, self.mapper_code
+                beneficiary.gender, beneficiary.age, dx.mapper_code
             )
             if edit_category:
                 dx.category = edit_category
@@ -111,7 +96,10 @@ class MedicareModelV24(MedicareModel):
         if (age < 6 or age > 18) and dx_code == "F3481":
             return ["NA"]
 
-    def _determine_disease_interactions(self, categories: list, disabled: bool) -> list:
+    def _determine_disease_interactions(self, categories: list, beneficiary) -> list:
+        category_list = [
+            category.category for category in categories if category.type == "disease"
+        ]
         cancer_list = ["HCC8", "HCC9", "HCC10", "HCC11", "HCC12"]
         diabetes_list = ["HCC17", "HCC18", "HCC19"]
         card_resp_fail_list = ["HCC82", "HCC83", "HCC84"]
@@ -121,28 +109,32 @@ class MedicareModelV24(MedicareModel):
         g_pyshiatric_v24_list = ["HCC57", "HCC58", "HCC59", "HCC60"]
         pressure_ulcer_list = ["HCC157", "HCC158", "HCC159"]
 
-        cancer = any(category in categories for category in cancer_list)
-        diabetes = any(category in categories for category in diabetes_list)
-        card_resp_fail = any(category in categories for category in card_resp_fail_list)
-        chf = "HCC85" in categories
-        g_copd_cf = any(category in categories for category in g_copd_cf_list)
-        renal_v24 = any(category in categories for category in renal_v24_list)
-        sepsis = "HCC2" in categories
+        cancer = any(category in category_list for category in cancer_list)
+        diabetes = any(category in category_list for category in diabetes_list)
+        card_resp_fail = any(
+            category in category_list for category in card_resp_fail_list
+        )
+        chf = "HCC85" in category_list
+        g_copd_cf = any(category in category_list for category in g_copd_cf_list)
+        renal_v24 = any(category in category_list for category in renal_v24_list)
+        sepsis = "HCC2" in category_list
         g_substance_use_disorder_v24 = any(
-            category in categories for category in g_substance_use_disorder_v24_list
+            category in category_list for category in g_substance_use_disorder_v24_list
         )
         g_pyshiatric_v24 = any(
-            category in categories for category in g_pyshiatric_v24_list
+            category in category_list for category in g_pyshiatric_v24_list
         )
-        pressure_ulcer = any(category in categories for category in pressure_ulcer_list)
-        hcc47 = "HCC47" in categories
-        hcc96 = "HCC96" in categories
-        hcc188 = "HCC188" in categories
-        hcc114 = "HCC114" in categories
-        hcc57 = "HCC57" in categories
-        hcc79 = "HCC79" in categories
+        pressure_ulcer = any(
+            category in category_list for category in pressure_ulcer_list
+        )
+        hcc47 = "HCC47" in category_list
+        hcc96 = "HCC96" in category_list
+        hcc188 = "HCC188" in category_list
+        hcc114 = "HCC114" in category_list
+        hcc57 = "HCC57" in category_list
+        hcc79 = "HCC79" in category_list
 
-        interactions = {
+        interactions_dict = {
             "HCC47_gCancer": all([cancer, hcc47]),
             "DIABETES_CHF": all([diabetes, chf]),
             "CHF_gCopdCF": all([chf, g_copd_cf]),
@@ -161,20 +153,26 @@ class MedicareModelV24(MedicareModel):
             "SCHIZOPHRENIA_gCopdCF": all([hcc57, g_copd_cf]),
             "SCHIZOPHRENIA_CHF": all([hcc57, chf]),
             "SCHIZOPHRENIA_SEIZURES": all([hcc57, hcc79]),
-            "DISABLED_HCC85": all([disabled, chf]),
-            "DISABLED_PRESSURE_ULCER": all([disabled, pressure_ulcer]),
-            "DISABLED_HCC161": all([disabled, "HCC161" in categories]),
-            "DISABLED_HCC39": all([disabled, "HCC39" in categories]),
-            "DISABLED_HCC77": all([disabled, "HCC77" in categories]),
-            "DISABLED_HCC6": all([disabled, "HCC6" in categories]),
+            "DISABLED_HCC85": all([beneficiary.disabled, chf]),
+            "DISABLED_PRESSURE_ULCER": all([beneficiary.disabled, pressure_ulcer]),
+            "DISABLED_HCC161": all([beneficiary.disabled, "HCC161" in category_list]),
+            "DISABLED_HCC39": all([beneficiary.disabled, "HCC39" in category_list]),
+            "DISABLED_HCC77": all([beneficiary.disabled, "HCC77" in category_list]),
+            "DISABLED_HCC6": all([beneficiary.disabled, "HCC6" in category_list]),
         }
-        interaction_list = [key for key, value in interactions.items() if value]
+        interaction_list = [key for key, value in interactions_dict.items() if value]
 
-        category_count = self._get_payment_count_categories(categories)
+        category_count = self._get_payment_count_categories(category_list)
         if category_count:
             interaction_list.append(category_count)
 
-        return interaction_list
+        interactions = [
+            Category(self.data_directory, beneficiary.risk_model_population, category)
+            for category in interaction_list
+        ]
+        interactions.extend(categories)
+
+        return interactions
 
     def _get_payment_count_categories(self, categories: list):
         """ """

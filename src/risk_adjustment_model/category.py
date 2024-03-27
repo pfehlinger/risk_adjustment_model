@@ -8,7 +8,14 @@ class Category:
     for the appropriate model population
     """
 
-    def __init__(self, filepath, risk_model_population, category):
+    def __init__(
+        self,
+        filepath,
+        risk_model_population,
+        category,
+        mapper_codes=None,
+        dropped_categories=None,
+    ):
         self.category_definitions = _get_category_definitions(filepath)
         self.category_weights = _get_category_weights(filepath)
         self.risk_model_population = risk_model_population
@@ -17,6 +24,8 @@ class Category:
         self.description = self._get_description(category)
         self.coefficient = self._get_coefficient(category, risk_model_population)
         self.number = self._get_number(category)
+        self.mapper_codes = mapper_codes
+        self.dropped_categories = dropped_categories
 
     def _get_type(self, category):
         return self.category_definitions[category]["type"]
