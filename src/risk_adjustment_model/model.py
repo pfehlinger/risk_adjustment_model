@@ -1,7 +1,7 @@
-import json
 import importlib.resources
 import os
 from pathlib import Path
+from .reference_files_loader import ReferenceFilesLoader
 from .utilities import determine_age_band
 from .beneficiary import MedicareBeneficiary
 from .category import Category
@@ -16,7 +16,7 @@ class BaseModel:
         self.year = year
         self.model_year = self._get_model_year()
         self.data_directory = self._get_data_directory()
-        self.hierarchy_definitions = self._get_hierarchy_definitions()
+        self.reference_files = ReferenceFilesLoader(self.data_directory)
 
     def _get_model_year(self) -> int:
         """
@@ -58,18 +58,6 @@ class BaseModel:
         data_directory = data_dir / self.version / str(self.model_year)
 
         return data_directory
-
-    def _get_hierarchy_definitions(self) -> dict:
-        """
-        Retrieve the hierarchy definitions from a JSON file.
-
-        Returns:
-            dict: A dictionary containing the hierarchy definitions.
-        """
-        with open(self.data_directory / "hierarchy_definition.json") as file:
-            hierarchy_definitions = json.load(file)
-
-        return hierarchy_definitions
 
 
 class MedicareModel(BaseModel):
@@ -167,7 +155,7 @@ class MedicareModel(BaseModel):
 
         categories = [
             Category(
-                self.data_directory,
+                self.reference_files,
                 beneficiary.risk_model_population,
                 category,
                 cat_dict.get(category),
@@ -252,10 +240,10 @@ class MedicareModel(BaseModel):
 
         for category in categories:
             dropped_codes = []
-            if category.category in self.hierarchy_definitions.keys():
-                for remove_category in self.hierarchy_definitions[category.category][
-                    "remove_code"
-                ]:
+            if category.category in self.reference_files.hierarchy_definitions.keys():
+                for remove_category in self.reference_files.hierarchy_definitions[
+                    category.category
+                ]["remove_code"]:
                     if remove_category in category_list:
                         dropped_codes.append(remove_category)
                         dropped_codes_total.append(remove_category)
@@ -356,13 +344,13 @@ class MedicareModel(BaseModel):
 
     def _get_dx_categories(self, diagnosis_codes, beneficiary):
         dx_categories = [
-            DxCodeCategory(self.filepath, diagnosis_code)
+            DxCodeCategory(self.reference_files.category_map, diagnosis_code)
             for diagnosis_code in diagnosis_codes
         ]
 
         for dx in dx_categories:
             edit_category = self.age_sex_edits(
-                beneficiary.gender, beneficiary.age, self.mapper_code
+                beneficiary.gender, beneficiary.age, dx.mapper_code
             )
             if edit_category:
                 dx.category = edit_category
@@ -377,7 +365,7 @@ class MedicareModel(BaseModel):
             interaction_list.append(category_count)
 
         interactions = [
-            Category(self.data_directory, beneficiary.risk_model_population, category)
+            Category(self.reference_files, beneficiary.risk_model_population, category)
             for category in interaction_list
         ]
 
