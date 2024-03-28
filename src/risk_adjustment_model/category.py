@@ -1,6 +1,3 @@
-from .utilities import _get_category_definitions, _get_category_weights
-
-
 class Category:
     """
     This is an object to encapsulate a single category. It will contain
@@ -10,14 +7,13 @@ class Category:
 
     def __init__(
         self,
-        filepath,
+        reference_files,
         risk_model_population,
         category,
         mapper_codes=None,
         dropped_categories=None,
     ):
-        self.category_definitions = _get_category_definitions(filepath)
-        self.category_weights = _get_category_weights(filepath)
+        self.reference_files = reference_files
         self.risk_model_population = risk_model_population
         self.category = category
         self.type = self._get_type(category)
@@ -28,16 +24,16 @@ class Category:
         self.dropped_categories = dropped_categories
 
     def _get_type(self, category):
-        return self.category_definitions[category]["type"]
+        return self.reference_files.category_definitions[category]["type"]
 
     def _get_description(self, category):
-        return self.category_definitions[category]["descr"]
+        return self.reference_files.category_definitions[category]["descr"]
 
     def _get_coefficient(self, category, risk_model_population):
-        return self.category_weights[category][risk_model_population]
+        return self.reference_files.category_weights[category][risk_model_population]
 
     def _get_number(self, category):
-        return self.category_definitions[category].get("number", None)
+        return self.reference_files.category_definitions[category].get("number", None)
 
     def _get_number(self, category):
-        return self.category_definitions[category].get("number", None)
+        return self.reference_files.category_definitions[category].get("number", None)

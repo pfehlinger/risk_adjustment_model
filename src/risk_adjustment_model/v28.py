@@ -1,6 +1,5 @@
 from .utilities import determine_age_band
 from .model import MedicareModel
-from .mapper import DxCodeCategory
 from .category import Category
 
 
@@ -42,10 +41,10 @@ class MedicareModelV28(MedicareModel):
 
         for category in categories:
             dropped_codes = []
-            if category.category in self.hierarchy_definitions.keys():
-                for remove_category in self.hierarchy_definitions[category.category][
-                    "remove_code"
-                ]:
+            if category.category in self.reference_files.hierarchy_definitions.keys():
+                for remove_category in self.reference_files.hierarchy_definitions[
+                    category.category
+                ]["remove_code"]:
                     if remove_category in category_list:
                         dropped_codes.append(remove_category)
                         dropped_codes_total.append(remove_category)
@@ -82,21 +81,6 @@ class MedicareModelV28(MedicareModel):
             normalization_factor = 1
 
         return normalization_factor
-
-    def _get_dx_categories(self, diagnosis_codes, beneficiary):
-        dx_categories = [
-            DxCodeCategory(self.data_directory, diagnosis_code)
-            for diagnosis_code in diagnosis_codes
-        ]
-
-        for dx in dx_categories:
-            edit_category = self.age_sex_edits(
-                beneficiary.gender, beneficiary.age, dx.mapper_code
-            )
-            if edit_category:
-                dx.category = edit_category
-
-        return dx_categories
 
     def age_sex_edits(self, gender, age, diagnosis_code):
         new_category = self._age_sex_edit_1(gender, diagnosis_code)
@@ -302,7 +286,7 @@ class MedicareModelV28(MedicareModel):
         if category_count:
             interaction_list.append(category_count)
         interactions = [
-            Category(self.data_directory, beneficiary.risk_model_population, category)
+            Category(self.reference_files, beneficiary.risk_model_population, category)
             for category in interaction_list
         ]
         interactions.extend(categories)
