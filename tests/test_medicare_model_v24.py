@@ -385,7 +385,7 @@ def test_new_enrollee():
 
 
 def test_raw_score():
-    model = MedicareModelV24()
+    model = MedicareModelV24(year=2024)
     results = model.score(
         gender="M",
         orec="0",
