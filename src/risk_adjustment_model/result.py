@@ -1,5 +1,5 @@
 from dataclasses import dataclass
-from typing import List, Dict
+from typing import List, Union, Dict
 
 
 @dataclass
@@ -40,10 +40,10 @@ class ScoringResult:
     gender: str
     orec: str
     medicaid: bool
-    age: int
-    dob: str
-    diagnosis_codes: List[str]
-    year: int
+    age: Union[int, None]
+    dob: Union[str, None]
+    diagnosis_codes: Union[List[str], None]
+    year: Union[int, None]
     population: str
     risk_model_age: int
     risk_model_population: str

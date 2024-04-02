@@ -4,13 +4,14 @@ from typing import Union
 class GenericCodeCategory:
     """
     Encapsulates a generic code and its corresponding category mapping. This is a base
-    class and should not be called directly.
+    class and should not be called directly. Some codes can go to multiple categories,
+    thus the categories attribute is a list.
 
     Attributes:
         category_map (dict): A dictionary containing the mapping of codes to categories.
         mapper_code (str): The code to be mapped.
         type (str): The type of code (default is None).
-        category (list): A list containing the category corresponding to the code.
+        categories (list[str]): A list containing the categories corresponding to the code.
     """
 
     def __init__(self, category_map: dict, code: str, type: Union[str, None] = None):
@@ -25,7 +26,7 @@ class GenericCodeCategory:
         self.mapper_code = code
         self.type = type
         self.category_map = category_map[type]
-        self.category = self.category_map.get(code, [None])
+        self.categories = self.category_map.get(code, [None])
 
 
 class DxCodeCategory(GenericCodeCategory):

@@ -1,5 +1,5 @@
 import datetime
-from typing import Union
+from typing import Union, Tuple
 
 
 class Beneficiary:
@@ -155,7 +155,7 @@ class MedicareBeneficiary(Beneficiary):
 
         return age
 
-    def _determine_disabled(self, age: int, orec: str):
+    def _determine_disabled(self, age: int, orec: str) -> Tuple[bool, bool]:
         """
         Determine disability status and original disability status based on age and
         original entitlement reason code.

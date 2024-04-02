@@ -1,6 +1,7 @@
 import importlib.resources
 import os
 from pathlib import Path
+from typing import Union, Type, List
 from .reference_files_loader import ReferenceFilesLoader
 from .utilities import determine_age_band
 from .beneficiary import MedicareBeneficiary
@@ -10,7 +11,28 @@ from .mapper import DxCodeCategory
 
 
 class BaseModel:
-    def __init__(self, lob, version, year=None):
+    """
+    Represents a base model for healthcare Risk Adjustment models. This should not be
+    called directly.
+
+    Attributes:
+        lob (str): Line of Business (LOB) for the model.
+        version (str): Version of the model.
+        year (int): Year for which the model is implemented (default is None).
+        model_year (int): The actual year of the model.
+        data_directory (Path): Path to the directory containing model data.
+        reference_files (ReferenceFilesLoader): Loader for reference files.
+    """
+
+    def __init__(self, lob: str, version: str, year: Union[int, None] = None):
+        """
+        Initializes a BaseModel with the provided parameters.
+
+        Args:
+            lob (str): Line of Business (LOB) for the model.
+            version (str): Version of the model.
+            year (int, optional): Year for which the model is implemented (default is None).
+        """
         self.lob = lob
         self.version = version
         self.year = year
@@ -20,26 +42,30 @@ class BaseModel:
 
     def _get_model_year(self) -> int:
         """
-        The CMS Medicare Risk Adjustment model is implemented on an annual basis, and sometimes
-        even if the categories do not change, weights, diagnosis code mappings, etc. can change.
-        Therefore, to account for this, a year can be passed in to specify which mappings and weights
-        to use. If nothing is passed in, the code will by default use the most recent valid year.
+        Determine the model year based on the provided year or the most recent available year.
+        If the year passed in is invalid, it raises a value error.
 
         Returns:
             int: The model year.
 
         Raises:
             FileNotFoundError: If the specified version directory or reference data
-                            directory does not exist.
-
+                                directory does not exist.
+            ValueError: If the year passed in is not valid for the Line of Business (LOB) and version,
+                        or if no year is passed and there are no valid years available.
         """
+        data_dir = importlib.resources.files(
+            "risk_adjustment_model.reference_data"
+        ).joinpath(f"{self.lob}")
+        dirs = os.listdir(data_dir / self.version)
+        years = [int(dir) for dir in dirs]
+
         if not self.year:
-            data_dir = importlib.resources.files(
-                "risk_adjustment_model.reference_data"
-            ).joinpath(f"{self.lob}")
-            dirs = os.listdir(data_dir / self.version)
-            years = [int(dir) for dir in dirs]
             max_year = max(years)
+        elif self.year not in years:
+            raise ValueError(
+                f"Input year is not valid for LOB: {self.lob}, version: {self.version}. Valid years are {years}"
+            )
         else:
             max_year = self.year
 
@@ -62,20 +88,45 @@ class BaseModel:
 
 class MedicareModel(BaseModel):
     """
-    This is the foundation for Medicare Models. It is not to be called directly. It loads all relevant information for that model
-    and year as class attributes.
-
+    This is the foundation class for Medicare Models. It is not to be called directly. It loads all
+    relevant information for that model and year as class attributes.
 
     How this class works:
-    1. Instantiate the class with set up information: model version, year optional if same model version has multiple years and differences
-    between years. If year is null, going to pull the most recent
-    2. Instantiating the class loads all reference information into memory and it is ready to go.
-    3. Call the score method passing in necessary values
-    4. Since each model may have its own nuances, want to put each model in its own class that then handles certain category stuff
+    1.  Instantiate the class with set up information: model version and year (optional).
+        If year is None, the code will determine the most recent year and use that.
+    2.  Instantiating the class loads all reference information into memory for performance purposes.
+    3.  The entry point is the "score" method.
+    4.  Since each model has its own nuances, each model is its own class inheriting from this class.
+
+    Attributes:
+        coding_intensity_adjuster (float): CMS is required by law to adjust Medicare Advantage risk scores
+                                           using this value. See:
+                                           https://bettermedicarealliance.org/wp-content/uploads/2022/06/BMA-Fact-Sheet-Coding-Practices-and-Adjustments-in-Medicare-Advantage-1.pdf
+        normalization_factor (float): CMS updates normalization factor each year to apply to the risk scores. See:
+                                      https://www.commonwealthfund.org/publications/explainer/2024/mar/how-government-updates-payment-rates-medicare-advantage-plans
+
+    Notes:
+        In terms of inheritance for child classes and how it relates to methods, the code is
+        organizaed in the following fashion:
+
+        Methods strongly advised against overwriting:
+            score
+            _build_category_details
+        Methods unlikely needing overwriting but could happen based on needs:
+            _apply_hierarchies
+            _determine_demographic_categories
+            _get_dx_categories
+            _get_coding_intensity_adjuster
+        Methods likely needing overwriting, e.g.:
+            _determine_age_gender_category
+            _determine_disease_interactions
+            _age_sex_edits
+            _get_normalization_factor
+        Helper methods to not override, e.g.: _apply_norm_factor_coding_adj
     """
 
-    def __init__(self, version: str, year=None):
-        super().__init__("medicare", version, year)
+    def __init__(self, version: str, year: Union[int, None] = None):
+        super().__init__(lob="medicare", version=version, year=year)
         self.coding_intensity_adjuster = self._get_coding_intensity_adjuster(
             self.model_year
         )
@@ -86,14 +137,15 @@ class MedicareModel(BaseModel):
         gender: str,
         orec: str,
         medicaid: bool,
-        diagnosis_codes=[],
-        age=None,
-        dob=None,
-        population="CNA",
-        verbose=False,
-    ) -> dict:
+        diagnosis_codes: Union[List[str], None] = None,
+        age: Union[int, None] = None,
+        dob: Union[str, None] = None,
+        population: str = "CNA",
+        verbose: bool = False,
+    ) -> Type[ScoringResult]:
         """
         Determines the risk score for the inputs. Entry point for end users.
+
         Steps:
         1. Use beneficiary information to get the demographic categories
         2. Using diagnosis code inputs and beneficiary information get the diagnosis code to
@@ -101,7 +153,6 @@ class MedicareModel(BaseModel):
         3. Get the unique set of categories from diagnosis codes
         4. Apply hierarchies
         5. Determine disease interactions
-
 
         Args:
             gender (str): Gender of the beneficiary being scored, valid values M or F.
@@ -114,11 +165,12 @@ class MedicareModel(BaseModel):
             verbose (bool): Indicates if trimmed output or full output is desired
 
         Returns:
-            dict: A dictionary containing the score information.
+            ScoringResult: An instantiated object of ScoringResult class.
         """
-
-        beneficiary = MedicareBeneficiary(gender, orec, medicaid, population, age, dob)
-        demo_categories = self.determine_demographic_cats(beneficiary)
+        beneficiary = MedicareBeneficiary(
+            gender, orec, medicaid, population, age, dob, self.model_year
+        )
+        demo_categories = self._determine_demographic_categories(beneficiary)
 
         if diagnosis_codes:
             cat_dict = {}
@@ -128,7 +180,7 @@ class MedicareModel(BaseModel):
             unique_disease_cats = set(
                 category
                 for dx_code in dx_categories
-                for category in dx_code.category
+                for category in dx_code.categories
                 if category is not None and category != "NA"
             )
 
@@ -141,7 +193,7 @@ class MedicareModel(BaseModel):
                 diagnosis_map = [
                     dx_code.mapper_code
                     for dx_code in dx_categories
-                    if category in dx_code.category
+                    if category in dx_code.categories
                 ]
                 cat_dict[category] = diagnosis_map
         else:
@@ -183,7 +235,7 @@ class MedicareModel(BaseModel):
 
         category_details = self._build_category_details(categories, verbose)
 
-        output_dict = ScoringResult(
+        results = ScoringResult(
             gender=beneficiary.gender,
             orec=beneficiary.orec,
             medicaid=beneficiary.medicaid,
@@ -208,14 +260,48 @@ class MedicareModel(BaseModel):
             category_details=category_details,
         )
 
-        return output_dict
+        return results
 
-    def determine_demographic_cats(self, beneficiary) -> list:
-        """Need to do the static typing stuff above for gender, age, orec"""
-        # NEED TO DO LTIMEDICAID
+    def _build_category_details(
+        self, categories: List[Type[Category]], verbose: bool
+    ) -> dict:
+        # Combine the dictionaries to make output
+        category_details = {}
+        for category in categories:
+            if verbose:
+                category_details[category.category] = {
+                    "coefficient": category.coefficient,
+                    "type": category.type,
+                    "category_number": category.number,
+                    "category_description": category.description,
+                    "dropped_categories": category.dropped_categories,
+                    "diagnosis_map": category.mapper_codes,
+                }
+            else:
+                category_details[category.category] = {
+                    "coefficient": category.coefficient,
+                    "diagnosis_map": category.mapper_codes,
+                }
+
+        return category_details
+
+    # --- Methods which may need to be overwritten but unlikely to be overwritten ---
+
+    def _determine_demographic_categories(
+        self, beneficiary: Type[MedicareBeneficiary]
+    ) -> List[str]:
+        """
+        Determine demographic categories based on beneficiary attributes.
+
+        Args:
+            beneficiary (Type[MedicareBeneficiary]): An instance of MedicareBeneficiary.
+
+        Returns:
+            list: A list containing demographic categories.
+        """
         demo_cats = []
         demo_cats.append(
-            self._determine_demographic_cats(
+            self._determine_age_gender_category(
                 beneficiary.age, beneficiary.gender, beneficiary.population
             )
         )
@@ -227,13 +313,19 @@ class MedicareModel(BaseModel):
 
         return demo_cats
 
-    def _apply_hierarchies(self, categories: list) -> dict:
+    def _apply_hierarchies(self, categories: List[Type[Category]]) -> dict:
         """
-        Takes in a list containing category objects and removes categories that fall
-        into hierarchies as outlined in the hierarchy_definition file.
+        Filters out categories falling into hierarchies per the model hierarchy_definition file.
+
+        Args:
+            categories (List[Type[Category]]): List of category objects to process.
 
         Returns:
-            list a of category objects
+            List[Type[Category]]: List of category objects after filtering.
+
+        Notes:
+            For each category, the codes dropped are tracked and assigned to the
+            attribute "dropped_categories" of the category object.
         """
         category_list = [category.category for category in categories]
         dropped_codes_total = []
@@ -260,41 +352,48 @@ class MedicareModel(BaseModel):
 
         return final_categories
 
-    def _build_category_details(self, categories, verbose):
-        # Combine the dictionaries to make output
-        category_details = {}
-        for category in categories:
-            if verbose:
-                category_details[category.category] = {
-                    "coefficient": category.coefficient,
-                    "type": category.type,
-                    "category_number": category.number,
-                    "category_description": category.description,
-                    "dropped_categories": category.dropped_categories,
-                    "diagnosis_map": category.mapper_codes,
-                }
-            else:
-                category_details[category.category] = {
-                    "coefficient": category.coefficient,
-                    "diagnosis_map": category.mapper_codes,
-                }
-
-        return category_details
-
-    # --- Helper methods which should not be overwritten ---
-
-    def _apply_norm_factor_coding_adj(self, score: float) -> float:
-        return round(
-            round(score * self.coding_intensity_adjuster, 4)
-            / self.normalization_factor,
-            4,
-        )
-
-    def _get_coding_intensity_adjuster(self, year) -> float:
+    def _get_dx_categories(
+        self, diagnosis_codes: List[str], beneficiary: Type[MedicareBeneficiary]
+    ) -> List[Type[DxCodeCategory]]:
         """
+        Generates diagnosis code to categories relationships based on provided diagnosis codes
+        and beneficiary information.
+
+        Args:
+            diagnosis_codes (List[str]): List of diagnosis codes.
+            beneficiary (Type[MedicareBeneficiary]): Instance of MedicareBeneficiary representing the beneficiary information.
+
+        Returns:
+            List[Type[DxCodeCategory]]: List of DxCodeCategory objects representing the diagnosis code categories.
+        """
+        dx_categories = [
+            DxCodeCategory(self.reference_files.category_map, diagnosis_code)
+            for diagnosis_code in diagnosis_codes
+        ]
+
+        for dx in dx_categories:
+            edit_category = self._age_sex_edits(
+                beneficiary.gender, beneficiary.age, dx.mapper_code
+            )
+            if edit_category:
+                dx.categories = edit_category
+
+        return dx_categories
+
+    def _get_coding_intensity_adjuster(self, year: int) -> float:
+        """
+        Gets the appropriate coding intensity adjuster for the model year as outlined by
+        CMS in their annual Annoucements:
+        https://www.cms.gov/medicare/payment/medicare-advantage-rates-statistics/announcements-and-documents
 
         Returns:
             float: The coding intensity adjuster.
+
+        Notes:
+            In the documents, the coding intensity adjuster is listed as a small decimal, e.g.
+            .059. In scoring calculations, the adjuster is applied by doing score * (1-.059).
+            Thus, the below already represents the 1-.059 for convenience.
+            Most years, the coding intensity adjuster is the statuatory minimum of .059.
         """
         coding_intensity_dict = {
             2020: 0.941,
@@ -311,83 +410,21 @@ class MedicareModel(BaseModel):
 
         return coding_intensity_adjuster
 
-    def _get_normalization_factor(self, version, year, model_group="C") -> float:
-        """
+    # --- Methods likely to be overwritten by each model class ---
 
-        C = Commmunity
-        D = Dialysis
-        G = Graft
+    def _determine_age_gender_category(
+        self, age: int, gender: str, population: str
+    ) -> str:
+        """
+        Determines the demographic category based on age, gender, and population.
+
+        Args:
+            age (int): Age of the individual.
+            gender (str): Gender of the individual ('M' for male, 'F' for female).
+            population (str): Beneficiary model population used for scoring
 
         Returns:
-            float: The normalization factor.
-        """
-        norm_factor_dict = {
-            "v24": {
-                2020: {"C": 1.069},
-                2021: {"C": 1.097},
-                2022: {"C": 1.118},
-                2023: {"C": 1.127},
-                2024: {"C": 1.146},
-                2025: {"C": 1.153},
-            },
-            "v28": {
-                2024: {"C": 1.015},
-                2025: {"C": 1.045},
-            },
-        }
-        try:
-            normalization_factor = norm_factor_dict[version][year][model_group]
-        except KeyError:
-            normalization_factor = 1
-
-        return normalization_factor
-
-    def _get_dx_categories(self, diagnosis_codes, beneficiary):
-        dx_categories = [
-            DxCodeCategory(self.reference_files.category_map, diagnosis_code)
-            for diagnosis_code in diagnosis_codes
-        ]
-
-        for dx in dx_categories:
-            edit_category = self.age_sex_edits(
-                beneficiary.gender, beneficiary.age, dx.mapper_code
-            )
-            if edit_category:
-                dx.category = edit_category
-
-        return dx_categories
-
-    # -- To be overwritten by each model class as need
-    def _determine_disease_interactions(self, categories: list, beneficiary) -> list:
-        interaction_list = []
-        category_count = self._get_payment_count_categories(categories)
-        if category_count:
-            interaction_list.append(category_count)
-
-        interactions = [
-            Category(self.reference_files, beneficiary.risk_model_population, category)
-            for category in interaction_list
-        ]
-
-        interactions.append(categories)
-
-        return interactions
-
-    def _get_payment_count_categories(self, categories: list):
-        """"""
-        category_count = len(categories)
-        category = None
-        if category_count > 9:
-            category = "D10P"
-        elif category_count > 0:
-            category = f"D{category_count}"
-
-        return category
-
-    def _determine_demographic_cats(self, age, gender, population):
-        """
-        This may need to be overwritten depending on the mechanices of the model.
-        Ranges may change, the population may change, etc.
+            str: Demographic category based on age, gender, and population.
         """
         if population[:2] == "NE":
             demo_category_ranges = [
@@ -433,14 +470,24 @@ class MedicareModel(BaseModel):
 
         return demographic_category
 
-    def _determine_demographic_interactions(self, gender, orig_disabled, medicaid):
+    def _determine_demographic_interactions(
+        self, gender: str, orig_disabled: bool, medicaid: bool
+    ) -> List[str]:
         """
-        Depending on model this may change
+        Determines demographic interactions based on gender, disability status, and Medicaid enrollment.
+
+        Args:
+            gender (str): Gender of the individual ('M' for male, 'F' for female).
+            orig_disabled (bool): Indicates if the individual was originally disabled.
+            medicaid (bool): Indicates if the individual is enrolled in Medicaid.
+
+        Returns:
+            List[str]: List of demographic interaction labels.
         """
         demo_interactions = []
-        if gender == "F" and orig_disabled == 1:
+        if gender == "F" and orig_disabled:
             demo_interactions.append("OriginallyDisabled_Female")
-        elif gender == "M" and orig_disabled == 1:
+        elif gender == "M" and orig_disabled:
             demo_interactions.append("OriginallyDisabled_Male")
 
         if medicaid:
@@ -448,5 +495,91 @@ class MedicareModel(BaseModel):
 
         return demo_interactions
 
-    def age_sex_edits(self, gender, age, diagnosis_code):
+    def _determine_disease_interactions(
+        self, categories: List[Type[Category]], beneficiary: Type[MedicareBeneficiary]
+    ) -> List[Type[Category]]:
+        """
+        Determines disease interactions based on provided Category objects and beneficiary information.
+
+        Args:
+            categories (List[Type[Category]]): List of Category objects representing disease categories.
+            beneficiary (Type[MedicareBeneficiary]): Instance of MedicareBeneficiary representing the beneficiary information.
+
+        Returns:
+            List[Type[Category]]: List of Category objects representing the disease interactions.
+        """
+        interaction_list = []
+        category_count = self._determine_payment_count_category(categories)
+        if category_count:
+            interaction_list.append(category_count)
+
+        interactions = [
+            Category(self.reference_files, beneficiary.risk_model_population, category)
+            for category in interaction_list
+        ]
+
+        interactions.append(categories)
+
+        return interactions
+
+    def _determine_payment_count_category(self, categories: list) -> str:
+        """
+        Determines the payment count category based on the number of categories provided.
+
+        Args:
+            categories (list): List of categories.
+
+        Returns:
+            str: Payment count category.
+        """
+        category_count = len(categories)
+        category = None
+        if category_count > 9:
+            category = "D10P"
+        elif category_count > 0:
+            category = f"D{category_count}"
+
+        return category
+
+    def _age_sex_edits(self, gender: str, age: int, diagnosis_code: str) -> List[str]:
+        """
+        Placeholder function to be overwritten by child clasess. This to encapsulate
+        the age sex edits for a model that are to be performed on the
+        DxCodeCategory objects in the _get_dx_categories method.
+
+        Returns:
+            List[str]: List of categories based on input gender, age, diagnosis code
+        """
         return ["NA"]
+
+    def _get_normalization_factor(self, year: int) -> float:
+        """
+        Placeholder function to be overwritten by child class to return the normalization
+        factor for model and year combination.
+
+        Returns:
+            float: The normalization factor.
+        """
+        normalization_factor = 1
+
+        return normalization_factor
+
+    # --- Helper methods which should not be overwritten ---
+
+    def _apply_norm_factor_coding_adj(self, score: float) -> float:
+        """
+        Applies normalization factor and coding intensity adjustment to the score.
+        Per CMS documentation, rounding happens at each step. Technically, it should
+        be to the third decmial, but rounding to the 4th for greater precision.
+
+        Args:
+            score (float): The score to be adjusted.
+
+        Returns:
+            float: The adjusted score.
+        """
+        return round(
+            round(score * self.coding_intensity_adjuster, 4)
+            / self.normalization_factor,
+            4,
+        )
