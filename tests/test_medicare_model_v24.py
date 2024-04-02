@@ -1,9 +1,9 @@
-from risk_adjustment_model import MedicareModel
+from risk_adjustment_model import MedicareModelV24
 from math import isclose
 
 
 def test_category_mapping():
-    model = MedicareModel("v24")
+    model = MedicareModelV24()
     results = model.score(
         gender="M",
         orec="1",
@@ -27,7 +27,7 @@ def test_category_mapping():
 
 
 def test_demo_category_mapping():
-    model = MedicareModel("v24")
+    model = MedicareModelV24()
     results = model.score(
         gender="M",
         orec="1",
@@ -52,7 +52,7 @@ def test_demo_category_mapping():
 
 
 def test_age_sex_edits():
-    model = MedicareModel("v24")
+    model = MedicareModelV24()
     results = model.score(
         gender="F",
         orec="0",
@@ -82,11 +82,12 @@ def test_age_sex_edits():
         population="CPD",
         verbose=False,
     )
-    assert len(results.category_list) == 1
+    # LTIMCAID shows in addition to the demographic
+    assert len(results.category_list) == 2
 
 
 def test_category_interactions():
-    model = MedicareModel("v24")
+    model = MedicareModelV24()
 
     results = model.score(
         gender="F",
@@ -332,7 +333,7 @@ def test_category_interactions():
 
 
 def test_new_enrollee():
-    model = MedicareModel("v24")
+    model = MedicareModelV24()
     # NE_NMCAID_NORIGDIS
     results = model.score(
         gender="F",
@@ -384,7 +385,7 @@ def test_new_enrollee():
 
 
 def test_raw_score():
-    model = MedicareModel("v24")
+    model = MedicareModelV24(year=2024)
     results = model.score(
         gender="M",
         orec="0",
