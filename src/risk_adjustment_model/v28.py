@@ -1,33 +1,75 @@
+from typing import List, Union, Type
 from .utilities import determine_age_band
 from .model import MedicareModel
 from .category import Category
+from .beneficiary import MedicareBeneficiary
 
 
 class MedicareModelV28(MedicareModel):
     """
-    This is the foundation for Medicare Models. It is not to be called directly. It loads all relevant information for that model
-    and year as class attributes.
+    This class represents the V28 Community Model for Medicare. It inherits from the MedicareModel class.
 
+    Methods:
+        __init__: Initializes the MedicareModelV24 instance.
 
-    How this class works:
-    1. Instantiate the class with set up information: model version, year optional if same model version has multiple years and differences
-    between years. If year is null, going to pull the most recent
-    2. Instantiating the class loads all reference information into memory and it is ready to go.
-    3. Call the score method passing in necessary values
-    4. Since each model may have its own nuances, want to put each model in its own class that then handles certain category stuff
+        Overwrites:
+            _get_normalization_factor: Retrieves the normalization factor based on the model year.
+            _age_sex_edits: Applies age and sex edits to diagnosis codes.
+            _determine_disease_interactions: Determines disease interactions based on Category objects and beneficiary information.
+
+        Included for clarity:
+            _determine_payment_count_category: Determines the payment count category based on the number of categories provided.
+            _determine_age_gender_category: Determines the demographic category based on age, gender, and population.
+            _determine_demographic_interactions: Determines demographic interactions based on gender, disability status, and Medicaid enrollment.
+
+        New:
+            _age_sex_edit_1: Applies age and sex edit 1 to a diagnosis code.
+            _age_sex_edit_2: Applies age and sex edit 2 to a diagnosis code.
+            _age_sex_edit_3: Applies age and sex edit 3 to a diagnosis code.
     """
 
-    def __init__(self, year=None):
+    def __init__(self, year: Union[int, None] = None):
         super().__init__("v28", year)
         self.normalization_factor = self._get_normalization_factor(self.model_year)
 
-    def _apply_hierarchies(self, categories: list) -> dict:
+    def _get_normalization_factor(self, year: int) -> float:
         """
-        Takes in a list containing category objects and removes categories that fall
-        into hierarchies as outlined in the hierarchy_definition file.
+        CMS updates normalization factor each year to apply to the risk scores. See:
+        https://www.commonwealthfund.org/publications/explainer/2024/mar/how-government-updates-payment-rates-medicare-advantage-plans
+
+        This dictionary is updated each year to include the normalization factor from the final announcement.
 
         Returns:
-            list a of category objects
+            float: The normalization factor.
+        """
+        norm_factor_dict = {
+            2024: 1.015,
+            2025: 1.045,
+        }
+        try:
+            normalization_factor = norm_factor_dict[year]
+        except KeyError:
+            normalization_factor = 1
+
+        return normalization_factor
+
+    def _apply_hierarchies(
+        self, categories: List[Type[Category]]
+    ) -> List[Type[Category]]:
+        """
+        Filters out categories falling into hierarchies per the model hierarchy_definition file.
+        In V28 there is a "heart interaction patch" in the file V283T3M which is easily
+        applied in the hierachy step, thus this method is overwritten here.
+
+        Args:
+            categories (List[Type[Category]]): List of category objects to process.
+
+        Returns:
+            List[Type[Category]]: List of category objects after filtering.
+
+        Notes:
+            For each category, the codes dropped are tracked and assigned to the
+            attribute "dropped_categories" of the category object.
         """
         category_list = [category.category for category in categories]
         dropped_codes_total = []
@@ -61,28 +103,22 @@ class MedicareModelV28(MedicareModel):
 
         return final_categories
 
-    def _get_normalization_factor(self, year) -> float:
+    def _age_sex_edits(
+        self, gender: str, age: int, diagnosis_code: str
+    ) -> Union[List[str], None]:
         """
+        Wrapper method to apply all model specific age and sex edits for a diagnosis code to
+        category mapping. These are found in the model software file named something like
+        "V28I0ED1".
 
-        C = Commmunity
-        D = Dialysis
-        G = Graft
+        Args:
+            gender (str): Gender of the individual ('M' for male, 'F' for female).
+            age (int): Age of the individual.
+            diagnosis_code (str): Diagnosis code to apply edits.
 
         Returns:
-            float: The normalization factor.
+            Union[List[str], None]: List of categories after applying edits, or None if no edits applied.
         """
-        norm_factor_dict = {
-            2024: 1.015,
-            2025: 1.045,
-        }
-        try:
-            normalization_factor = norm_factor_dict[year]
-        except KeyError:
-            normalization_factor = 1
-
-        return normalization_factor
-
-    def age_sex_edits(self, gender, age, diagnosis_code):
         new_category = self._age_sex_edit_1(gender, diagnosis_code)
         if new_category:
             return new_category
@@ -96,11 +132,31 @@ class MedicareModelV28(MedicareModel):
         if new_category:
             return new_category
 
-    def _age_sex_edit_1(self, gender, dx_code):
+    def _age_sex_edit_1(self, gender: str, dx_code: str) -> Union[List[str], None]:
+        """
+        Apply age and sex edit 1 to a diagnosis code.
+
+        Args:
+            gender (str): Gender of the individual ('M' for male, 'F' for female).
+            dx_code (str): Diagnosis code to apply the edit.
+
+        Returns:
+            Union[List[str], None]: List of categories after applying the edit, or None if the edit is not applicable.
+        """
         if gender == "F" and dx_code in ["D66", "D67"]:
             return ["HCC112"]
 
-    def _age_sex_edit_2(self, age, dx_code):
+    def _age_sex_edit_2(self, age: int, dx_code: str) -> Union[List[str], None]:
+        """
+        Apply age and sex edit 2 to a diagnosis code.
+
+        Args:
+            age (int): Age of the individual.
+            dx_code (str): Diagnosis code to apply the edit.
+
+        Returns:
+            Union[List[str], None]: List of categories after applying the edit, or None if the edit is not applicable.
+        """
         if age < 18 and dx_code in [
             "J410",
             "J411",
@@ -119,7 +175,17 @@ class MedicareModelV28(MedicareModel):
         ]:
             return ["NA"]
 
-    def _age_sex_edit_3(self, age, dx_code):
+    def _age_sex_edit_3(self, age: int, dx_code: str) -> Union[List[str], None]:
+        """
+        Apply age and sex edit 3 to a diagnosis code.
+
+        Args:
+            age (int): Age of the individual.
+            dx_code (str): Diagnosis code to apply the edit.
+
+        Returns:
+            Union[List[str], None]: List of categories after applying the edit, or None if the edit is not applicable.
+        """
         if age < 50 and dx_code in [
             "C50011",
             "C50012",
@@ -178,7 +244,17 @@ class MedicareModelV28(MedicareModel):
         ]:
             return ["HCC22"]
 
-    def _age_sex_edit_4(self, age, dx_code):
+    def _age_sex_edit_4(self, age: int, dx_code: str) -> Union[List[str], None]:
+        """
+        Apply age and sex edit 4 to a diagnosis code.
+
+        Args:
+            age (int): Age of the individual.
+            dx_code (str): Diagnosis code to apply the edit.
+
+        Returns:
+            Union[List[str], None]: List of categories after applying the edit, or None if the edit is not applicable.
+        """
         if age >= 2 and dx_code in [
             "P040",
             "P041",
@@ -215,7 +291,19 @@ class MedicareModelV28(MedicareModel):
         ]:
             return ["NA"]
 
-    def _determine_disease_interactions(self, categories: list, beneficiary) -> list:
+    def _determine_disease_interactions(
+        self, categories: List[Type[Category]], beneficiary: Type[MedicareBeneficiary]
+    ) -> List[Type[Category]]:
+        """
+        Determines disease interactions based on provided Category objects and beneficiary information.
+
+        Args:
+            categories (List[Type[Category]]): List of Category objects representing disease categories.
+            beneficiary (Type[MedicareBeneficiary]): Instance of MedicareBeneficiary representing the beneficiary information.
+
+        Returns:
+            List[Type[Category]]: List of Category objects representing the disease interactions.
+        """
         category_list = [
             category.category for category in categories if category.type == "disease"
         ]
@@ -282,7 +370,7 @@ class MedicareModelV28(MedicareModel):
         }
         interaction_list = [key for key, value in interactions_dict.items() if value]
 
-        category_count = self._get_payment_count_categories(category_list)
+        category_count = self._determine_payment_count_category(category_list)
         if category_count:
             interaction_list.append(category_count)
         interactions = [
@@ -293,10 +381,16 @@ class MedicareModelV28(MedicareModel):
 
         return interactions
 
-        return interaction_list
+    def _determine_payment_count_category(self, categories: list) -> str:
+        """
+        Determines the payment count category based on the number of categories provided.
 
-    def _get_payment_count_categories(self, categories: list):
-        """ """
+        Args:
+            categories (list): List of categories.
+
+        Returns:
+            str: Payment count category.
+        """
         category_count = len(categories)
         category = None
         if category_count > 9:
@@ -306,10 +400,19 @@ class MedicareModelV28(MedicareModel):
 
         return category
 
-    def _determine_demographic_cats(self, age, gender, population):
+    def _determine_age_gender_category(
+        self, age: int, gender: str, population: str
+    ) -> str:
         """
-        This may need to be overwritten depending on the mechanices of the model.
-        Ranges may change, the population may change, etc.
+        Determines the demographic category based on age, gender, and population.
+
+        Args:
+            age (int): Age of the individual.
+            gender (str): Gender of the individual ('M' for male, 'F' for female).
+            population (str): Beneficiary model population used for scoring
+
+        Returns:
+            str: Demographic category based on age, gender, and population.
         """
         if population[:2] == "NE":
             demo_category_ranges = [
@@ -355,14 +458,24 @@ class MedicareModelV28(MedicareModel):
 
         return demographic_category
 
-    def _determine_demographic_interactions(self, gender, orig_disabled, medicaid):
+    def _determine_demographic_interactions(
+        self, gender: str, orig_disabled: bool, medicaid: bool
+    ) -> List[str]:
         """
-        Depending on model this may change
+        Determines demographic interactions based on gender, disability status, and Medicaid enrollment.
+
+        Args:
+            gender (str): Gender of the individual ('M' for male, 'F' for female).
+            orig_disabled (bool): Indicates if the individual was originally disabled.
+            medicaid (bool): Indicates if the individual is enrolled in Medicaid.
+
+        Returns:
+            List[str]: List of demographic interaction labels.
         """
         demo_interactions = []
-        if gender == "F" and orig_disabled == 1:
+        if gender == "F" and orig_disabled:
             demo_interactions.append("OriginallyDisabled_Female")
-        elif gender == "M" and orig_disabled == 1:
+        elif gender == "M" and orig_disabled:
             demo_interactions.append("OriginallyDisabled_Male")
 
         if medicaid:

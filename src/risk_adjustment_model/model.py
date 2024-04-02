@@ -313,7 +313,9 @@ class MedicareModel(BaseModel):
 
         return demo_cats
 
-    def _apply_hierarchies(self, categories: List[Type[Category]]) -> dict:
+    def _apply_hierarchies(
+        self, categories: List[Type[Category]]
+    ) -> List[Type[Category]]:
         """
         Filters out categories falling into hierarchies per the model hierarchy_definition file.
 
