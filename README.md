@@ -1,10 +1,4 @@
 # risk_adjustment_model
-Python implementation of Healthcare Risk Adjustment Models.
-
-## Prerequisites
-- Python 3.10 or later
-- Poetry package manager
-# risk_adjustment_model
 Python implementation of Healthcare Risk Adjustment Models
 
 This codebase implements the [Hierachical Condition Categories](https://www.cms.gov/cciio/resources/forms-reports-and-other-resources/downloads/ra-march-31-white-paper-032416.pdf) that undergrid the Medicare Advantage program.
