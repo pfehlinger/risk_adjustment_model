@@ -218,7 +218,7 @@ class MedicareModelV24(MedicareModel):
         }
         interaction_list = [key for key, value in interactions_dict.items() if value]
 
-        category_count = self._determine_payment_count_category(categories)
+        category_count = self._determine_payment_count_category(category_list)
         if category_count:
             interaction_list.append(category_count)
 
