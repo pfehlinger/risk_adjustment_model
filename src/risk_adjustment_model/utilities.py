@@ -1,4 +1,7 @@
-def determine_age_band(age: int, age_ranges: list):
+from typing import List
+
+
+def determine_age_band(age: int, age_ranges: List[str]):
     """
     Determine the age band of a given age based on a list of age ranges.
 
