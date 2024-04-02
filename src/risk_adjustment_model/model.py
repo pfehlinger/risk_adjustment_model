@@ -500,6 +500,7 @@ class MedicareModel(BaseModel):
     ) -> List[Type[Category]]:
         """
         Determines disease interactions based on provided Category objects and beneficiary information.
+        Placeholder to be overwritten by child classes.
 
         Args:
             categories (List[Type[Category]]): List of Category objects representing disease categories.
@@ -541,7 +542,9 @@ class MedicareModel(BaseModel):
 
         return category
 
-    def _age_sex_edits(self, gender: str, age: int, diagnosis_code: str) -> List[str]:
+    def _age_sex_edits(
+        self, gender: str, age: int, diagnosis_code: str
+    ) -> Union[List[str], None]:
         """
         Placeholder function to be overwritten by child clasess. This to encapsulate
         the age sex edits for a model that are to be performed on the
