@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "risk_adjustment_model"
-version = "0.1.0"
+version = "0.1.1"
 authors = ["Phil Fehlinger <pjfehlinger@gmail.com>"]
 description = "Python implementation of healthcare risk adjustment models"
 readme = "README.md"
@@ -8,10 +8,10 @@ packages = [{include = "risk_adjustment_model", from = "src"}]
 
 [tool.poetry.dependencies]
 python = "^3.12"
-pre-commit = "^3.6.2"
 
 [tool.poetry.group.dev.dependencies]
 pytest = "^8.1.1"
+pre-commit = "^3.6.2"
 
 [build-system]
 requires = ["poetry-core"]
