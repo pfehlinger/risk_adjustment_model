@@ -69,7 +69,8 @@ class MedicareBeneficiary(Beneficiary):
         gender: str,
         orec: str,
         medicaid: bool,
-        population="CNA",
+        esrd: bool = False,
+        population: str = "CNA",
         age: Union[None, int] = None,
         dob: Union[None, str] = None,
         model_year: Union[None, int] = None,
@@ -109,7 +110,7 @@ class MedicareBeneficiary(Beneficiary):
         )
         if self.population == "NE":
             self.risk_model_population = self._get_new_enrollee_population(
-                self.risk_model_age, self.orec, self.medicaid
+                self.risk_model_age, self.orec, self.medicaid, self.esrd
             )
         else:
             self.risk_model_population = population
@@ -181,7 +182,9 @@ class MedicareBeneficiary(Beneficiary):
 
         return disabled, orig_disabled
 
-    def _get_new_enrollee_population(self, age: int, orec: str, medicaid: bool):
+    def _get_new_enrollee_population(
+        self, age: int, orec: str, medicaid: bool, esrd: bool
+    ) -> str:
         """
         Compute the new enrollee population for the Community model based on Medicaid status
         and whether or not the beneficiary was originally disabled.
@@ -199,21 +202,30 @@ class MedicareBeneficiary(Beneficiary):
             - MCAID_NORIGDIS: Medicaid and not Originally Disabled
             - NMCAID_ORIGDIS: Non-Medicaid and Originally Disabled
             - MCAID_ORIGDIS: Medicaid and Originally Disabled
+        ESRD Dialysis New Enrollee populations
+            - ND_PBD_NORIGDIS: Non Dual or Partial Dual not Originally Disabled
         """
         ne_population = None
 
-        if age >= 65 and orec == "1":
-            ne_originally_disabled = True
+        if esrd:
+            pass
+            # ND_PBD_NORIGDIS
+            # FBD_NORIGDIS
+            # ND_PBD_ORIGDIS
+            # FBD_ORIGDIS
         else:
-            ne_originally_disabled = False
-        if not ne_originally_disabled and not medicaid:
-            ne_population = "NE_NMCAID_NORIGDIS"
-        if not ne_originally_disabled and medicaid:
-            ne_population = "NE_MCAID_NORIGDIS"
-        if ne_originally_disabled and not medicaid:
-            ne_population = "NE_NMCAID_ORIGDIS"
-        if ne_originally_disabled and medicaid:
-            ne_population = "NE_MCAID_ORIGDIS"
+            if age >= 65 and orec == "1":
+                ne_originally_disabled = True
+            else:
+                ne_originally_disabled = False
+            if not ne_originally_disabled and not medicaid:
+                ne_population = "NE_NMCAID_NORIGDIS"
+            if not ne_originally_disabled and medicaid:
+                ne_population = "NE_MCAID_NORIGDIS"
+            if ne_originally_disabled and not medicaid:
+                ne_population = "NE_NMCAID_ORIGDIS"
+            if ne_originally_disabled and medicaid:
+                ne_population = "NE_MCAID_ORIGDIS"
 
         if ne_population is None:
             raise ValueError(
