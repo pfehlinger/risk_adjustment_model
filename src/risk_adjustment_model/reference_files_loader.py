@@ -32,12 +32,16 @@ class ReferenceFilesLoader:
         _get_proc_code_to_category_mapping: Retrieve procedure code to category mappings from a text file.
     """
 
-    def __init__(self, filepath):
+    def __init__(self, filepath, lob=None):
         self.data_directory = filepath
         self.hierarchy_definitions = self._get_hierarchy_definitions()
         self.category_definitions = self._get_category_definitions()
-        self.category_weights = self._get_category_weights()
-        self.category_map = self._get_category_mapping()
+        self.category_weights = self._get_category_weights(lob)
+        self.category_map = self._get_category_mapping(lob)
+        if lob == "commercial":
+            self.group_definitions = self._get_group_definitions()
+            self.ndc_map = self._get_ndc_code_to_category_mapping()
+            self.proc_map = self._get_proc_code_to_category_mapping()
 
     def _get_hierarchy_definitions(self) -> dict:
         """
@@ -51,6 +55,19 @@ class ReferenceFilesLoader:
 
         return hierarchy_definitions
 
+    def _get_group_definitions(self) -> dict:
+        """
+        Retrieve the group definitions from a JSON file. This is applicable to Commercial
+        only.
+
+        Returns:
+            dict: A dictionary containing the hierarchy definitions.
+        """
+        with open(self.data_directory / "group_definition.json") as file:
+            group_definitions = json.load(file)
+
+        return group_definitions
+
     def _get_category_definitions(self) -> dict:
         """
         Retrieve category definitions from a JSON file.
@@ -63,7 +80,7 @@ class ReferenceFilesLoader:
 
         return category_definitions
 
-    def _get_category_weights(self) -> dict:
+    def _get_category_weights(self, lob) -> dict:
         """
         Retrieve category weights from a CSV file.
 
@@ -77,26 +94,45 @@ class ReferenceFilesLoader:
             the category and others representing different weights. The function constructs
             a nested dictionary where each category is mapped to a dictionary of weights.
         """
-        weights = {}
-        col_map = {}
-        with open(self.data_directory / "weights.csv", "r") as file:
-            for i, line in enumerate(file):
-                parts = line.strip().split(",")
-                if i == 0:
-                    # Validate column order OR create column map
-                    for x, col in enumerate(parts):
-                        col_map[col] = x
-                else:
-                    pop_weight = {}
-                    category = parts[col_map["category"]]
-                    for key in col_map.keys():
-                        if key != "category":
-                            pop_weight[key] = float(parts[col_map[key]])
-                    weights[category] = pop_weight
+        if lob == "commercial":
+            weights = {}
+            col_map = {}
+            with open(self.data_directory / "weights.csv", "r") as file:
+                for i, line in enumerate(file):
+                    parts = line.strip().split(",")
+                    if i == 0:
+                        # Validate column order OR create column map
+                        for x, col in enumerate(parts):
+                            col_map[col] = x
+                    else:
+                        pop_weight = {}
+                        category = parts[col_map["category"]]
+                        model_group = parts[col_map["model"]]
+                        for key in col_map.keys():
+                            if key not in ["category", "model"]:
+                                pop_weight[key] = float(parts[col_map[key]])
+                        weights[model_group + "_" + category] = pop_weight
+        else:
+            weights = {}
+            col_map = {}
+            with open(self.data_directory / "weights.csv", "r") as file:
+                for i, line in enumerate(file):
+                    parts = line.strip().split(",")
+                    if i == 0:
+                        # Validate column order OR create column map
+                        for x, col in enumerate(parts):
+                            col_map[col] = x
+                    else:
+                        pop_weight = {}
+                        category = parts[col_map["category"]]
+                        for key in col_map.keys():
+                            if key != "category":
+                                pop_weight[key] = float(parts[col_map[key]])
+                        weights[category] = pop_weight
 
         return weights
 
-    def _get_category_mapping(self) -> dict:
+    def _get_category_mapping(self, lob) -> dict:
         """
         Retrieve category weights from a CSV file.
 
@@ -117,7 +153,9 @@ class ReferenceFilesLoader:
                 file_type = filename.split("_")[0]
 
                 if file_type == "diag":
-                    category_map[file_type] = self._get_diag_code_to_category_mapping()
+                    category_map[file_type] = self._get_diag_code_to_category_mapping(
+                        lob
+                    )
                 elif file_type == "ndc":
                     category_map[file_type] = self._get_ndc_code_to_category_mapping()
                 elif file_type == "proc":
@@ -125,7 +163,7 @@ class ReferenceFilesLoader:
 
         return category_map
 
-    def _get_diag_code_to_category_mapping(self) -> dict:
+    def _get_diag_code_to_category_mapping(self, lob) -> dict:
         """
         Retrieve diagnosis code to category mappings from a text file. It expects the file
         to be a text file in the layout of diag-category_nbr where they are separated by
@@ -140,7 +178,15 @@ class ReferenceFilesLoader:
                 # Split the line based on the delimiter
                 parts = line.strip().split("\t")
                 diag = parts[0].strip()
-                category = "HCC" + parts[1].strip()
+                if lob == "commercial":
+                    if "." in parts[1]:
+                        category = "HHS_HCC" + parts[1].strip().replace(".", "_").zfill(
+                            5
+                        )
+                    else:
+                        category = "HHS_HCC" + parts[1].strip().zfill(3)
+                else:
+                    category = "HCC" + parts[1].strip()
                 if diag not in diag_to_category_map:
                     diag_to_category_map[diag] = []
                 diag_to_category_map[diag].append(category)
@@ -155,7 +201,18 @@ class ReferenceFilesLoader:
         Returns:
             dict: A dictionary mapping ndc codes to categories.
         """
-        return None
+        ndc_to_category_map = {}
+        with open(self.data_directory / "ndc_to_category_map.txt", "r") as file:
+            for line in file:
+                # Split the line based on the delimiter
+                parts = line.strip().split("\t")
+                ndc = parts[0].strip()
+                category = "RXC_" + parts[1].strip()
+
+                if ndc not in ndc_to_category_map:
+                    ndc_to_category_map[ndc] = []
+                ndc_to_category_map[ndc].append(category)
+        return ndc_to_category_map
 
     def _get_proc_code_to_category_mapping(self) -> dict:
         """
@@ -165,4 +222,15 @@ class ReferenceFilesLoader:
         Returns:
             dict: A dictionary mapping diagnosis codes to categories.
         """
-        return None
+        proc_to_category_map = {}
+        with open(self.data_directory / "proc_to_category_map.txt", "r") as file:
+            for line in file:
+                # Split the line based on the delimiter
+                parts = line.strip().split("\t")
+                proc = parts[0].strip()
+                category = "RXC_" + parts[1].strip()
+
+                if proc not in proc_to_category_map:
+                    proc_to_category_map[proc] = []
+                proc_to_category_map[proc].append(category)
+        return proc_to_category_map

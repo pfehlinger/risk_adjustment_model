@@ -221,3 +221,134 @@ class MedicareBeneficiary(Beneficiary):
             )
 
         return ne_population
+
+
+class CommercialBeneficiary(Beneficiary):
+    """
+    Represents a Commercial beneficiary which expands upon the Beneficiary class and
+    requires additional Commercial specific attributes: metal level, and population.
+    See __init__ for more detailed description of these attributes
+
+    Attributes:
+        gender (str): The gender of the Medicare beneficiary.
+        metal_level (str):
+        medicaid (bool): Indicates whether the beneficiary has Medicaid.
+        population (str, optional): The Medicare population type (default is "CNA").
+        age (int, optional): The age of the Commercial beneficiary.
+        dob (str, optional): The date of birth of the Commercial beneficiary in ISO format.
+        disabled (bool): Indicates if the beneficiary is disabled.
+        orig_disabled (bool): Indiciates if the beneficiary was originally disabled.
+        risk_model_age (int): Age of the benficiary used in the model scoring calculations.
+                              Per HHS, it is age of the beneficiary as of the last day of
+                              the enrollment period of that beneficiary.
+        risk_model_population (str): The derived population for the beneficiary based on all
+                                     beneficiary attributes. This is necessary as in the
+                                     Community model, CMS New Enrollees are broken into four
+                                     subpopulations based on Medicaid status and whether or
+                                     not the beneficiary was "originally disabled". By only
+                                     requiring "NE" to be passed in for a population value,
+                                     users do not need to know how to determine the four
+                                     additional subpopulations and the code does it for
+                                     them. See _get_new_enrollee_population for more details.
+
+    """
+
+    def __init__(
+        self,
+        gender: str,
+        metal_level: str = "Bronze",
+        enrollment_months: int = 12,
+        csr_indicator: int = 1,
+        age: Union[None, int] = None,
+        dob: Union[None, str] = None,
+        model_year: Union[None, int] = None,
+        last_enrollement_date: Union[None, str] = None,
+    ):
+        """
+        Initialize a CommercialBeneficiary object.
+
+        Args:
+            gender (str): The gender of the Medicare beneficiary.
+            orec (str): The original reason entitlement code. See the below link for more information:
+                        https://resdac.org/cms-data/variables/medicare-original-reason-entitlement-code-orec
+            medicaid (bool): A boolean indicating whether the beneficiary has Medicaid.
+            population (str, optional): The Medicare population type which the benficiary is
+                                        associated with and the score is being computed for.
+                                        Valid values are:
+                                        CNA - Community, Non Dual, Aged (default)
+                                        CND - Community, Non Dual, Disabled
+                                        CPA - Community, Partial Dual, Aged
+                                        CPD - Community, Partial Dual, Disabled
+                                        CFA - Community, Full Dual, Aged
+                                        CFD - Community, Full Dual, Disabled
+                                        INS - Institutional
+                                        NE - CMS New Enrollee
+            age (int, optional): The age of the Medicare beneficiary.
+            dob (str, optional): The date of birth of the Medicare beneficiary in ISO format.
+            model_year (int, optional): The model year which this beneficiary object is associated with.
+                              It is necessary to determine the age of the beneficiary if dob is passed in.
+        """
+        super().__init__(gender, age, dob)
+        self.metal_level = metal_level
+        self.enrollment_months = enrollment_months
+        self.csr_indicator = csr_indicator
+        self.model_year = model_year
+        self.last_enrollment_date = last_enrollement_date
+        self.risk_model_age = self._determine_age(self.age, self.dob)
+        self.risk_model_age_group = self._determine_age_group(self.risk_model_age)
+        self.risk_model_population = self.metal_level
+
+    def _determine_age(
+        self, age: Union[None, int] = None, dob: Union[None, str] = None
+    ) -> int:
+        """
+        Determine the age of the beneficiary based on either age or date of birth (DOB).
+
+        This function addresses two design considerations:
+        1. Date of birth (DOB) is considered Protected Health Information (PHI), thus
+           allowing flexibility in handling PHI by accepting either age or DOB.
+        2. The HHS Risk Adjustment Model uses age as of the last eligibility date of that
+           beneficiary for that benefit year. If DOB is provided, age needs to be computed
+           relative to that date. That benefit year must also be provided.
+
+        Args:
+            age (int): The age of the beneficiary.
+            dob (str): The date of birth of the beneficiary in ISO format.
+
+        Returns:
+            int: The age of the beneficiary as of February 1st of the payment year.
+
+        If age is provided, it is assumed to be correct as of February 1st of the payment year.
+        If DOB is provided, it computes the age relative to February 1st of the payment year.
+        """
+        if dob:
+            if self.last_enrollment_date is None:
+                raise ValueError(
+                    "When date of birth is provided, last enrollment date must also be provided"
+                )
+            reference_date = datetime.datetime.fromisoformat(self.last_enrollment_date)
+            dt_dob = datetime.datetime.fromisoformat(dob)
+            model_age = (
+                reference_date.year
+                - dt_dob.year
+                - (
+                    (reference_date.month, reference_date.day)
+                    < (dt_dob.month, dt_dob.day)
+                )
+            )
+        elif age:
+            model_age = age
+
+        return model_age
+
+    def _determine_age_group(self, age: int):
+        age_group = None
+
+        if age < 2:
+            age_group = "Infant"
+        elif 2 <= age < 21:
+            age_group = "Child"
+        else:
+            age_group = "Adult"
+
+        return age_group
