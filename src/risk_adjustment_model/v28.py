@@ -1,6 +1,6 @@
 from typing import List, Union, Type
 from .utilities import determine_age_band
-from .model import MedicareModel
+from .medicare_model import MedicareModel
 from .category import Category
 from .beneficiary import MedicareBeneficiary
 
