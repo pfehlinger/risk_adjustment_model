@@ -1,6 +1,6 @@
 from typing import List, Union, Type
 from .utilities import determine_age_band
-from .model import CommercialModel
+from .commercial_model import CommercialModel
 from .category import Category
 from .beneficiary import CommercialBeneficiary
 
@@ -87,6 +87,12 @@ class CommercialModelV07(CommercialModel):
         if new_category:
             return new_category
         new_category = self._age_sex_edit_14(age, diagnosis_code)
+        if new_category:
+            return new_category
+        new_category = self._age_sex_edit_15(age, diagnosis_code)
+        if new_category:
+            return new_category
+        new_category = self._age_sex_edit_16(age, diagnosis_code)
         if new_category:
             return new_category
 
@@ -247,7 +253,7 @@ class CommercialModelV07(CommercialModel):
             "C50922",
             "C50929",
         ]:
-            return ["HHS_HCC012"]
+            return ["HHS_HCC011"]
 
     def _age_sex_edit_5(self, age: int, dx_code: str) -> Union[List[str], None]:
         """
@@ -1188,11 +1194,12 @@ class CommercialModelV07(CommercialModel):
         if (age < 21) and dx_code in ["E108", "E1065", "E10649", "E109"]:
             return ["HHS_HCC021"]
 
-    def _determine_disease_interactions(
+    def _determine_interactions(
         self, categories: List[Type[Category]], beneficiary: Type[CommercialBeneficiary]
     ) -> List[Type[Category]]:
         """
         Determines disease interactions based on provided Category objects and beneficiary information.
+        This is relevant only for the Adult and Child groups
 
         Args:
             categories (List[Type[Category]]): List of Category objects representing disease categories.
@@ -1202,34 +1209,65 @@ class CommercialModelV07(CommercialModel):
             List[Type[Category]]: List of Category objects representing the disease interactions.
         """
         category_list = [
-            category.category for category in categories if category.type == "disease"
+            category.category
+            for category in categories
+            if category.type in ["disease", "group", "rx"]
         ]
 
-        if beneficiary.risk_model_age_group == "Infant":
-            interaction_list = self._determine_infant_interactions(category_list)
+        severe_illness, transplant = self._determine_severe_illness_transplant_status(
+            category_list
+        )
+        # RXC categories are excluded
+        category_count = len(
+            [
+                category
+                for category in category_list
+                if not category.startswith("RXC") and category != "HHS_HCC022"
+            ]
+        )
+
+        if beneficiary.risk_model_age_group == "Child":
+            interaction_list = self._determine_child_interactions(
+                severe_illness, transplant, category_count
+            )
         else:
-            interaction_list = self._determine_adult_child_interactions(
-                category_list, beneficiary
+            interaction_list = self._determine_adult_interactions(
+                category_list, severe_illness, transplant, category_count, beneficiary
             )
 
-        print(interaction_list)
-
         interactions = [
-            Category(self.reference_files, beneficiary.risk_model_population, category)
+            Category(
+                self.model_group_reference_files,
+                beneficiary.risk_model_population,
+                category,
+            )
             for category in interaction_list
         ]
         interactions.extend(categories)
 
         return interactions
 
-    def _determine_infant_interactions(self, category_list: list, beneficiary):
-        severity_level = self._determine_infant_severity_level(category_list)
-        maturity_status = self._determine_infant_maturity_status(
-            category_list, beneficiary
-        )
-        interaction_categories = [f"{maturity_status}_x_{severity_level}"]
+    def _determine_child_interactions(self, severe_illness, transplant, category_count):
+        # Children only get the severe illness interactions and transplant
 
-        return interaction_categories
+        interaction_list = []
+        severe_category = None
+        transplant_category = None
+        if severe_illness:
+            if category_count <= 5:
+                severe_category = f"SEVERE_HCC_COUNT{category_count}"
+            elif 6 <= category_count <= 7:
+                severe_category = "SEVERE_HCC_COUNT6_7"
+            elif category_count >= 8:
+                severe_category = "SEVERE_HCC_COUNT8PLUS"
+            interaction_list.append(severe_category)
+
+        if transplant:
+            if category_count >= 4:
+                transplant_category = "TRANSPLANT_HCC_COUNT4PLUS"
+                interaction_list.append(transplant_category)
+
+        return interaction_list
 
     def _determine_infant_severity_level(self, category_list):
         severity_5_hccs = [
@@ -1375,6 +1413,8 @@ class CommercialModelV07(CommercialModel):
             severity_status = "Severity2"
         elif any(category in category_list for category in severity_1_hccs):
             severity_status = "Severity1"
+        else:
+            severity_status = "Severity1"
 
         return severity_status
 
@@ -1418,7 +1458,9 @@ class CommercialModelV07(CommercialModel):
 
         return maturity_status
 
-    def _determine_adult_child_interactions(self, category_list: list, beneficiary):
+    def _determine_adult_interactions(
+        self, category_list, severe_illness, transplant, category_count, beneficiary
+    ):
         liver = any(
             category in category_list
             for category in [
@@ -1426,7 +1468,7 @@ class CommercialModelV07(CommercialModel):
                 "HHS_HCC035_1",
                 "HHS_HCC035_2",
                 "HHS_HCC036",
-                "HHS_HCC037",
+                "HHS_HCC037_1",
             ]
         )
         kidney = any(
@@ -1451,7 +1493,9 @@ class CommercialModelV07(CommercialModel):
             "RXC_01_x_HCC001": all(
                 category in category_list for category in ["RXC_01", "HHS_HCC001"]
             ),
-            "RXC_02_x_HCC037_1_036_035s_034": all(["RXC_02" in category_list, liver]),
+            "RXC_02_x_HCC037_1_036_035_2_035_1_034": all(
+                ["RXC_02" in category_list, liver]
+            ),
             "RXC_03_x_HCC142": all(
                 category in category_list for category in ["RXC_03", "HHS_HCC142"]
             ),
@@ -1463,7 +1507,7 @@ class CommercialModelV07(CommercialModel):
                 category in category_list for category in ["RXC_08", "HHS_HCC118"]
             ),
             "RXC_09_x_HCC056_057_and_048_041": all(
-                ["RXC_09" in category_list, autoimmune, diabetes]
+                ["RXC_09" in category_list, autoimmune, intestine]
             ),
             "RXC_09_x_HCC056": all(
                 category in category_list for category in ["RXC_09", "HHS_HCC056"]
@@ -1476,28 +1520,28 @@ class CommercialModelV07(CommercialModel):
         }
         interaction_list = [key for key, value in interactions_dict.items() if value]
 
-        severe_illness, transplant = self._determine_severe_illness_transplant_status(
-            category_list
-        )
-        # RXC categories are excluded
-        category_count = len(
-            [category for category in category_list if "HHS" in category]
-        )
-
-        # By definition, having severe_illness implies at least one category, thus no
-        # need to check the category count
         if severe_illness:
-            severe_illness_category = self._determine_severe_illness_category(
-                category_count, beneficiary
-            )
-            interaction_list.append(severe_illness_category)
+            if category_count <= 9:
+                severe_category = f"SEVERE_HCC_COUNT{category_count}"
+                interaction_list.append(severe_category)
+            elif category_count >= 10:
+                severe_category = "SEVERE_HCC_COUNT10PLUS"
+                interaction_list.append(severe_category)
 
-        # First transplant interaction starts at 4 categories
-        if transplant and category_count >= 4:
-            severe_illness_category = self._determine_transplant_category(
-                category_count, beneficiary
-            )
-            interaction_list.append(severe_illness_category)
+        if transplant:
+            if 4 <= category_count <= 7:
+                transplant_category = f"TRANSPLANT_HCC_COUNT{category_count}"
+                interaction_list.append(transplant_category)
+            elif category_count >= 8:
+                transplant_category = "TRANSPLANT_HCC_COUNT8PLUS"
+                interaction_list.append(transplant_category)
+
+        # Now do enrollment duration
+        enrollment_duration = self._determine_enrollment_duration_category(
+            category_count, beneficiary
+        )
+        if enrollment_duration:
+            interaction_list.append(enrollment_duration)
 
         return interaction_list
 
@@ -1509,97 +1553,57 @@ class CommercialModelV07(CommercialModel):
                 "HHS_HCC003",
                 "HHS_HCC004",
                 "HHS_HCC006",
+                "HHS_HCC018",
                 "HHS_HCC023",
                 "HHS_HCC034",
-                "HHS_HCC41",
+                "HHS_HCC041",
                 "HHS_HCC042",
                 "HHS_HCC096",
                 "HHS_HCC121",
                 "HHS_HCC122",
                 "HHS_HCC125",
+                # G13
+                "HHS_HCC126",
+                "HHS_HCC127",
+                # G14
+                "HHS_HCC128",
+                "HHS_HCC129",
+                ##
                 "HHS_HCC135",
                 "HHS_HCC145",
                 "HHS_HCC156",
                 "HHS_HCC158",
                 "HHS_HCC163",
+                "HHS_HCC183",
                 "HHS_HCC218",
                 "HHS_HCC223",
                 "HHS_HCC251",
-                "G13",
-                "G14",
-                "G24",
             ]
         )
         transplant = any(
             category in category_list
             for category in [
+                "HHS_HCC018",
                 "HHS_HCC034",
                 "HHS_HCC041",
+                # G14
+                "HHS_HCC128",
+                "HHS_HCC129",
+                ##
                 "HHS_HCC158",
+                "HHS_HCC183",
                 "HHS_HCC251",
-                "G14",
-                "G24",
             ]
         )
 
         return severe_illness, transplant
 
-    def _determine_severe_illness_category(
-        self, category_count, beneficiary: Type[CommercialBeneficiary]
-    ) -> str:
-        """
-        Determines the payment count category based on the number of categories provided.
-
-        Args:
-            categories (list): List of categories.
-
-        Returns:
-            str: Payment count category.
-        """
-        category = None
-
-        # Both Adult and Child go up to 5 by increments of 1
-        if category_count <= 5:
-            category = f"SEVERE_HCC_COUNT{category_count}"
-
-        if beneficiary.risk_model_age_group == "Child":
-            if 6 <= category_count <= 7:
-                category = "SEVERE_HCC_COUNT6_7"
-            elif category_count >= 8:
-                category = "SEVERE_HCC_COUNT8PLUS"
-
-        if beneficiary.risk_model_age_group == "Adult":
-            if 6 <= category_count <= 9:
-                category = f"SEVERE_HCC_COUNT{category_count}"
-            elif category_count >= 10:
-                category = "SEVERE_HCC_COUNT10PLUS"
-
-        return category
-
-    def _determine_transplant_category(
-        self, category_count, beneficiary: Type[CommercialBeneficiary]
-    ) -> str:
-        """
-        Determines the payment count category based on the number of categories provided.
-
-        Args:
-            categories (list): List of categories.
-
-        Returns:
-            str: Payment count category.
-        """
-        category = None
-
-        if beneficiary.risk_model_age_group == "Child":
-            if category_count >= 4:
-                category = "TRANSPLANT_HCC_COUNT4PLUS"
-        elif beneficiary.risk_model_age_group == "Adult":
-            if 4 <= category_count <= 7:
-                category = f"TRANSPLANT_HCC_COUNT{category_count}"
-            elif category_count >= 8:
-                category = "TRANSPLANT_HCC_COUNT8PLUS"
-
-        return category
+    def _determine_enrollment_duration_category(self, category_count: int, beneficiary):
+        enrollment_duration_category = None
+        if category_count > 0:
+            if beneficiary.enrollment_months <= 6:
+                enrollment_duration_category = f"HCC_ED{beneficiary.enrollment_months}"
+        return enrollment_duration_category
 
     def _determine_age_gender_category(self, age: int, gender: str) -> str:
         """
@@ -1615,8 +1619,10 @@ class CommercialModelV07(CommercialModel):
         """
 
         if age < 2:
-            # Infants all are consider "Male" from a model standpoint
-            demographic_category = f"Age{age}_Male"
+            if gender == "F":
+                demographic_category = None
+            else:
+                demographic_category = f"Age{age}_Male"
         else:
             demo_category_ranges = [
                 "2_4",

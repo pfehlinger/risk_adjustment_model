@@ -40,8 +40,8 @@ class ReferenceFilesLoader:
         self.category_map = self._get_category_mapping(lob)
         if lob == "commercial":
             self.group_definitions = self._get_group_definitions()
-            self.ndc_map = self._get_ndc_code_to_category_mapping()
-            self.proc_map = self._get_proc_code_to_category_mapping()
+            # self.ndc_map = self._get_ndc_code_to_category_mapping()
+            # self.proc_map = self._get_proc_code_to_category_mapping()
 
     def _get_hierarchy_definitions(self) -> dict:
         """
@@ -207,7 +207,7 @@ class ReferenceFilesLoader:
                 # Split the line based on the delimiter
                 parts = line.strip().split("\t")
                 ndc = parts[0].strip()
-                category = "RXC_" + parts[1].strip()
+                category = "RXC_" + parts[1].strip().zfill(2)
 
                 if ndc not in ndc_to_category_map:
                     ndc_to_category_map[ndc] = []
@@ -228,7 +228,7 @@ class ReferenceFilesLoader:
                 # Split the line based on the delimiter
                 parts = line.strip().split("\t")
                 proc = parts[0].strip()
-                category = "RXC_" + parts[1].strip()
+                category = "RXC_" + parts[1].strip().zfill(2)
 
                 if proc not in proc_to_category_map:
                     proc_to_category_map[proc] = []

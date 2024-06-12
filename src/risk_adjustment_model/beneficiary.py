@@ -336,7 +336,7 @@ class CommercialBeneficiary(Beneficiary):
                     < (dt_dob.month, dt_dob.day)
                 )
             )
-        elif age:
+        elif age is not None:
             model_age = age
 
         return model_age
