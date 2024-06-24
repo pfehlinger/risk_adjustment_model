@@ -257,7 +257,7 @@ class CommercialBeneficiary(Beneficiary):
         self,
         gender: str,
         metal_level: str = "Bronze",
-        enrollment_months: int = 12,
+        enrollment_days: int = 365,
         csr_indicator: int = 1,
         age: Union[None, int] = None,
         dob: Union[None, str] = None,
@@ -290,13 +290,14 @@ class CommercialBeneficiary(Beneficiary):
         """
         super().__init__(gender, age, dob)
         self.metal_level = metal_level
-        self.enrollment_months = enrollment_months
+        self.enrollment_days = enrollment_days
         self.csr_indicator = csr_indicator
         self.model_year = model_year
         self.last_enrollment_date = last_enrollement_date
         self.risk_model_age = self._determine_age(self.age, self.dob)
         self.risk_model_age_group = self._determine_age_group(self.risk_model_age)
         self.risk_model_population = self.metal_level
+        self.enrollment_months = self._determine_enrollment_months(self.enrollment_days)
 
     def _determine_age(
         self, age: Union[None, int] = None, dob: Union[None, str] = None
@@ -352,3 +353,32 @@ class CommercialBeneficiary(Beneficiary):
             age_group = "Adult"
 
         return age_group
+
+    def _determine_enrollment_months(self, enrollment_days: int):
+        enrollment_months = 0
+        if 1 <= enrollment_days <= 31:
+            enrollment_months = 1
+        elif 32 <= enrollment_days <= 62:
+            enrollment_months = 2
+        elif 63 <= enrollment_days <= 92:
+            enrollment_months = 3
+        elif 93 <= enrollment_days <= 123:
+            enrollment_months = 4
+        elif 124 <= enrollment_days <= 153:
+            enrollment_months = 5
+        elif 154 <= enrollment_days <= 184:
+            enrollment_months = 6
+        elif 185 <= enrollment_days <= 214:
+            enrollment_months = 7
+        elif 215 <= enrollment_days <= 245:
+            enrollment_months = 8
+        elif 246 <= enrollment_days <= 275:
+            enrollment_months = 9
+        elif 276 <= enrollment_days <= 306:
+            enrollment_months = 10
+        elif 307 <= enrollment_days <= 335:
+            enrollment_months = 11
+        elif 336 <= enrollment_days <= 366:
+            enrollment_months = 12
+
+        return enrollment_months

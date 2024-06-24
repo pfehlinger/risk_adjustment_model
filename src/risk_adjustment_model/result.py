@@ -135,6 +135,7 @@ class CommercialScoringResult(BaseScoringResult):
 
     metal_level: str
     csr_indicator: int
-    enrollment_months: int
+    enrollment_days: int
     last_enrollment_date: Union[str, None]
+    enrollment_months: float
     csr_adjuster: float
