@@ -417,34 +417,50 @@ class CommercialModel(BaseModel):
         Notes:
             For each category, the codes dropped are tracked and assigned to the
             attribute "dropped_categories" of the category object.
-        """
-        dropped_codes = []
-        group_categories = []
 
-        for category in categories:
-            if (
-                category.category
-                in self.model_group_reference_files.group_definitions.keys()
-            ):
-                dropped_codes.append(category.category)
-                group_category = Category(
-                    self.model_group_reference_files,
-                    beneficiary.risk_model_population,
-                    self.model_group_reference_files.group_definitions[
-                        category.category
-                    ],
-                    dropped_categories=dropped_codes,
-                )
-                group_categories.append(group_category)
+            It is possible for a group to drop two categories that are not in a
+            hierarchy. As such it needs to be treated similarly to how applying
+            hierarchies work.
+        """
+        category_list = [category.category for category in categories]
+        dropped_codes_total = []
+        group_dict = {}
+
+        for category in category_list:
+            if category in self.model_group_reference_files.group_definitions.keys():
+                # At this point need to add the Group code and the code it drops
+                # to a dictionary, and then check if that group code exists
+                # if it does, then update the value, else add a new value
+                dropped_codes_total.append(category)
+                group_category = self.model_group_reference_files.group_definitions[
+                    category
+                ]
+
+                if group_category in group_dict:
+                    group_dict[group_category].append(category)
+                else:
+                    group_dict[group_category] = [category]
 
         # Remove objects from list
         final_categories = [
             category
             for category in categories
-            if category.category not in dropped_codes
+            if category.category not in dropped_codes_total
         ]
-        # Add the group categories
-        final_categories.extend(group_categories)
+
+        # Add groups to the list
+        group_categories = [
+            Category(
+                self.model_group_reference_files,
+                beneficiary.risk_model_population,
+                category,
+                dropped_categories=dropped_codes,
+            )
+            for category, dropped_codes in group_dict.items()
+        ]
+
+        if group_categories:
+            final_categories.extend(group_categories)
 
         return final_categories
 

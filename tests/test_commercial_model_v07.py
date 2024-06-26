@@ -103,6 +103,22 @@ def test_category_groups():
     assert "G02D" not in results.category_list
     assert "HHS_HCC029" in results.category_list
 
+    # Test that two HCCs not in a hierachy
+    # that trigger a group are captured in the dropped
+    # codes. As such need verbose output
+    results = model.score(
+        gender="M",
+        metal_level="Silver",
+        csr_indicator=1,
+        enrollment_days=365,
+        diagnosis_codes=["E71311", "E71448"],
+        age=18,
+        verbose=True,
+    )
+    assert "G02D" in results.category_list
+    assert "HHS_HCC028" in results.category_details["G02D"]["dropped_categories"]
+    assert "HHS_HCC029" in results.category_details["G02D"]["dropped_categories"]
+
 
 def test_demo_category_mapping():
     model = CommercialModelV07(year=2023)
