@@ -1227,21 +1227,22 @@ class CommercialModelV07(CommercialModel):
         )
 
         if beneficiary.risk_model_age_group == "Child":
-            interaction_list = self._determine_child_interactions(
+            interaction_dict = self._determine_child_interactions(
                 severe_illness, transplant, category_count
             )
         else:
-            interaction_list = self._determine_adult_interactions(
+            interaction_dict = self._determine_adult_interactions(
                 category_list, severe_illness, transplant, category_count, beneficiary
             )
 
         interactions = [
             Category(
-                self.model_group_reference_files,
-                beneficiary.risk_model_population,
-                category,
+                reference_files=self.model_group_reference_files,
+                risk_model_population=beneficiary.risk_model_population,
+                category=category,
+                mapper_codes=trigger_codes,
             )
-            for category in interaction_list
+            for category, trigger_codes in interaction_dict.items()
         ]
         interactions.extend(categories)
 
@@ -1250,7 +1251,7 @@ class CommercialModelV07(CommercialModel):
     def _determine_child_interactions(self, severe_illness, transplant, category_count):
         # Children only get the severe illness interactions and transplant
 
-        interaction_list = []
+        interaction_dict = {}
         severe_category = None
         transplant_category = None
         if severe_illness:
@@ -1260,14 +1261,15 @@ class CommercialModelV07(CommercialModel):
                 severe_category = "SEVERE_HCC_COUNT6_7"
             elif category_count >= 8:
                 severe_category = "SEVERE_HCC_COUNT8PLUS"
-            interaction_list.append(severe_category)
+            # In the case of severe and count not including any trigger codes
+            interaction_dict[severe_category] = None
 
         if transplant:
             if category_count >= 4:
                 transplant_category = "TRANSPLANT_HCC_COUNT4PLUS"
-                interaction_list.append(transplant_category)
+                interaction_dict[transplant_category] = None
 
-        return interaction_list
+        return interaction_dict
 
     def _determine_infant_severity_level(self, category_list):
         severity_5_hccs = [
@@ -1460,9 +1462,14 @@ class CommercialModelV07(CommercialModel):
 
     def _determine_adult_interactions(
         self, category_list, severe_illness, transplant, category_count, beneficiary
-    ):
-        liver = any(
-            category in category_list
+    ) -> dict:
+        """
+        Since we want to retain the "triggering" codes for interactions will
+        have the values
+
+        """
+        liver = [
+            category
             for category in [
                 "HHS_HCC034",
                 "HHS_HCC035_1",
@@ -1470,80 +1477,108 @@ class CommercialModelV07(CommercialModel):
                 "HHS_HCC036",
                 "HHS_HCC037_1",
             ]
-        )
-        kidney = any(
-            category in category_list
-            for category in ["HHS_HCC183", "HHS_HCC184", "HHS_HCC187", "HHS_HCC188"]
-        )
-        intestine = any(
-            category in category_list for category in ["HHS_HCC041", "HHS_HCC048"]
-        )
-        diabetes = any(
-            category in category_list
-            for category in ["HHS_HCC018", "HHS_HCC019", "HHS_HCC020", "HHS_HCC021"]
-        )
-        autoimmune = any(
-            category in category_list for category in ["HHS_HCC056", "HHS_HCC057"]
-        )
-        lung = any(
-            category in category_list for category in ["HHS_HCC158", "HHS_HCC159"]
-        )
+            if category in category_list
+        ]
 
-        interactions_dict = {
-            "RXC_01_x_HCC001": all(
-                category in category_list for category in ["RXC_01", "HHS_HCC001"]
-            ),
-            "RXC_02_x_HCC037_1_036_035_2_035_1_034": all(
-                ["RXC_02" in category_list, liver]
-            ),
-            "RXC_03_x_HCC142": all(
-                category in category_list for category in ["RXC_03", "HHS_HCC142"]
-            ),
-            "RXC_04_x_HCC184_183_187_188": all(["RXC_04" in category_list, kidney]),
-            "RXC_05_x_HCC048_041": all(["RXC_05" in category_list, intestine]),
-            "RXC_06_x_HCC018_019_020_021": all(["RXC_06" in category_list, diabetes]),
-            "RXC_07_x_HCC018_019_020_021": all(["RXC_07" in category_list, diabetes]),
-            "RXC_08_x_HCC118": all(
-                category in category_list for category in ["RXC_08", "HHS_HCC118"]
-            ),
-            "RXC_09_x_HCC056_057_and_048_041": all(
-                ["RXC_09" in category_list, autoimmune, intestine]
-            ),
-            "RXC_09_x_HCC056": all(
-                category in category_list for category in ["RXC_09", "HHS_HCC056"]
-            ),
-            "RXC_09_x_HCC057": all(
-                category in category_list for category in ["RXC_09", "HHS_HCC057"]
-            ),
-            "RXC_09_x_HCC048_041": all(["RXC_09" in category_list, intestine]),
-            "RXC_10_x_HCC159_158": all(["RXC_10" in category_list, lung]),
-        }
-        interaction_list = [key for key, value in interactions_dict.items() if value]
+        kidney = [
+            category
+            for category in ["HHS_HCC183", "HHS_HCC184", "HHS_HCC187", "HHS_HCC188"]
+            if category in category_list
+        ]
+
+        intestine = [
+            category
+            for category in ["HHS_HCC041", "HHS_HCC048"]
+            if category in category_list
+        ]
+
+        diabetes = [
+            category
+            for category in ["HHS_HCC018", "HHS_HCC019", "HHS_HCC020", "HHS_HCC021"]
+            if category in category_list
+        ]
+
+        autoimmune = [
+            category
+            for category in ["HHS_HCC056", "HHS_HCC057"]
+            if category in category_list
+        ]
+
+        lung = [
+            category
+            for category in ["HHS_HCC158", "HHS_HCC159"]
+            if category in category_list
+        ]
+
+        # Keys will be interaction, values will be list of triggering categories
+        interactions_dict = {}
+        if all(category in category_list for category in ["RXC_01", "HHS_HCC001"]):
+            interactions_dict["RXC_01_x_HCC001"] = ["RXC_01", "HHS_HCC001"]
+
+        if all(["RXC_02" in category_list, liver]):
+            interactions_dict["RXC_02_x_HCC037_1_036_035_2_035_1_034"] = [
+                "RXC_02"
+            ] + liver
+
+        if all(category in category_list for category in ["RXC_03", "HHS_HCC142"]):
+            interactions_dict["RXC_03_x_HCC142"] = ["RXC_03", "HHS_HCC142"]
+
+        if all(["RXC_04" in category_list, kidney]):
+            interactions_dict["RXC_04_x_HCC184_183_187_188"] = ["RXC_04"] + kidney
+
+        if all(["RXC_05" in category_list, intestine]):
+            interactions_dict["RXC_05_x_HCC048_041"] = ["RXC_05"] + intestine
+
+        if all(["RXC_06" in category_list, diabetes]):
+            interactions_dict["RXC_06_x_HCC018_019_020_021"] = ["RXC_06"] + diabetes
+
+        if all(["RXC_07" in category_list, diabetes]):
+            interactions_dict["RXC_07_x_HCC018_019_020_021"] = ["RXC_07"] + diabetes
+
+        if all(category in category_list for category in ["RXC_08", "HHS_HCC118"]):
+            interactions_dict["RXC_08_x_HCC118"] = ["RXC_08", "HHS_HCC118"]
+
+        if all(["RXC_09" in category_list, autoimmune, intestine]):
+            interactions_dict["RXC_09_x_HCC056_057_and_048_041"] = (
+                ["RXC_09"] + autoimmune + intestine
+            )
+
+        if all(category in category_list for category in ["RXC_09", "HHS_HCC056"]):
+            interactions_dict["RXC_09_x_HCC056"] = ["RXC_09", "HHS_HCC056"]
+
+        if all(category in category_list for category in ["RXC_09", "HHS_HCC057"]):
+            interactions_dict["RXC_09_x_HCC057"] = ["RXC_09", "HHS_HCC057"]
+
+        if all(["RXC_09" in category_list, intestine]):
+            interactions_dict["RXC_09_x_HCC048_041"] = ["RXC_09"] + intestine
+
+        if all(["RXC_10" in category_list, lung]):
+            interactions_dict["RXC_10_x_HCC159_158"] = ["RXC_10"] + lung
 
         if severe_illness:
             if category_count <= 9:
                 severe_category = f"SEVERE_HCC_COUNT{category_count}"
-                interaction_list.append(severe_category)
+                interactions_dict[severe_category] = None
             elif category_count >= 10:
                 severe_category = "SEVERE_HCC_COUNT10PLUS"
-                interaction_list.append(severe_category)
+                interactions_dict[severe_category] = None
 
         if transplant:
             if 4 <= category_count <= 7:
                 transplant_category = f"TRANSPLANT_HCC_COUNT{category_count}"
-                interaction_list.append(transplant_category)
+                interactions_dict[transplant_category] = None
             elif category_count >= 8:
                 transplant_category = "TRANSPLANT_HCC_COUNT8PLUS"
-                interaction_list.append(transplant_category)
+                interactions_dict[transplant_category] = None
 
         # Now do enrollment duration
         enrollment_duration = self._determine_enrollment_duration_category(
             category_count, beneficiary
         )
         if enrollment_duration:
-            interaction_list.append(enrollment_duration)
+            interactions_dict[enrollment_duration] = None
 
-        return interaction_list
+        return interactions_dict
 
     def _determine_severe_illness_transplant_status(self, category_list):
         severe_illness = any(

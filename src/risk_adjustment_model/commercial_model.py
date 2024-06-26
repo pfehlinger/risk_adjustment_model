@@ -258,12 +258,12 @@ class CommercialModel(BaseModel):
                     "category_number": category.number,
                     "category_description": category.description,
                     "dropped_categories": category.dropped_categories,
-                    "diagnosis_map": category.mapper_codes,
+                    "trigger_code_map": category.mapper_codes,
                 }
             else:
                 category_details[category.category] = {
                     "coefficient": category.coefficient,
-                    "diagnosis_map": category.mapper_codes,
+                    "trigger_code_map": category.mapper_codes,
                 }
 
         return category_details
@@ -291,7 +291,9 @@ class CommercialModel(BaseModel):
             demo_cats.append(demo_cat)
         return demo_cats
 
-    def _determine_infant_categories(self, unique_categories, beneficiary):
+    def _determine_infant_categories(
+        self, unique_categories, beneficiary
+    ) -> List[Type[Category]]:
         """
         This combines multiple steps in the other models into one as the Infant model
         doesn't follow the same steps as the other models. An infant has a
@@ -449,11 +451,14 @@ class CommercialModel(BaseModel):
         ]
 
         # Add groups to the list
+        # Since "categories" trigger the code, they are both
+        # the dropped codes and the mapper codes
         group_categories = [
             Category(
-                self.model_group_reference_files,
-                beneficiary.risk_model_population,
-                category,
+                reference_files=self.model_group_reference_files,
+                risk_model_population=beneficiary.risk_model_population,
+                category=category,
+                mapper_codes=dropped_codes,
                 dropped_categories=dropped_codes,
             )
             for category, dropped_codes in group_dict.items()
@@ -610,36 +615,6 @@ class CommercialModel(BaseModel):
         return demographic_category
 
     def _determine_interactions(
-        self, categories: List[Type[Category]], beneficiary: Type[CommercialBeneficiary]
-    ) -> List[Type[Category]]:
-        """
-        Determines disease interactions based on provided Category objects and beneficiary information.
-        Placeholder to be overwritten by child classes.
-
-        Args:
-            categories (List[Type[Category]]): List of Category objects representing disease categories.
-            beneficiary (Type[CommercialBeneficiary]): Instance of CommercialBeneficiary representing the beneficiary information.
-
-        Returns:
-            List[Type[Category]]: List of Category objects representing the disease interactions.
-        """
-        interaction_list = []
-
-        interactions = [
-            Category(
-                self.model_group_reference_files,
-                beneficiary.risk_model_population,
-                beneficiary.risk_model_age_group,
-                category,
-            )
-            for category in interaction_list
-        ]
-
-        interactions.append(categories)
-
-        return interactions
-
-    def _determine_child_interactions(
         self, categories: List[Type[Category]], beneficiary: Type[CommercialBeneficiary]
     ) -> List[Type[Category]]:
         """

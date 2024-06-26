@@ -407,3 +407,53 @@ def test_infant_severity():
         verbose=False,
     )
     assert "Term_x_Severity1" in results.category_list
+
+
+def test_interactions():
+    model = CommercialModelV07(year=2023)
+
+    # RXC_05_x_HCC048_041
+    results = model.score(
+        gender="M",
+        metal_level="Silver",
+        csr_indicator=1,
+        enrollment_days=68,
+        diagnosis_codes=["K50011"],
+        ndc_codes=["70710154302"],
+        age=54,
+        verbose=False,
+    )
+    assert "RXC_05_x_HCC048_041" in results.category_list
+    assert (
+        "HHS_HCC048"
+        in results.category_details["RXC_05_x_HCC048_041"]["trigger_code_map"]
+    )
+
+    # Test RXC_07_x_HCC018_019_020_021
+    results = model.score(
+        gender="M",
+        metal_level="Silver",
+        csr_indicator=1,
+        enrollment_days=68,
+        diagnosis_codes=["E119"],
+        ndc_codes=["00002147180"],
+        age=54,
+        verbose=False,
+    )
+    assert "RXC_07_x_HCC018_019_020_021" in results.category_list
+    assert "G01" in results.category_list
+
+    # "RXC_09_x_HCC056_057_and_048_041"
+    results = model.score(
+        gender="M",
+        metal_level="Silver",
+        csr_indicator=1,
+        enrollment_days=68,
+        diagnosis_codes=["K50011", "M05019"],
+        ndc_codes=["72606003003"],
+        age=54,
+        verbose=False,
+    )
+    assert "HHS_HCC056" in results.category_list
+    assert "HHS_HCC048" in results.category_list
+    assert "RXC_09_x_HCC056_057_and_048_041" in results.category_list
