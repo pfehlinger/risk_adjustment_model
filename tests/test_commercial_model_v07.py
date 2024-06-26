@@ -457,3 +457,49 @@ def test_interactions():
     assert "HHS_HCC056" in results.category_list
     assert "HHS_HCC048" in results.category_list
     assert "RXC_09_x_HCC056_057_and_048_041" in results.category_list
+
+
+def test_dropped_categories():
+    model = CommercialModelV07(year=2023)
+
+    # Check Group dropping category
+    results = model.score(
+        gender="M",
+        metal_level="Silver",
+        csr_indicator=1,
+        enrollment_days=365,
+        diagnosis_codes=["E119"],
+        age=54,
+        verbose=False,
+    )
+    assert "G01" in results.category_list
+    assert "HHS_HCC021" in results.dropped_category_list
+
+    # Check hierarchy dropping category
+    results = model.score(
+        gender="M",
+        metal_level="Silver",
+        csr_indicator=1,
+        enrollment_days=365,
+        diagnosis_codes=["A0101", "A871"],
+        age=54,
+        verbose=False,
+    )
+    assert "HHS_HCC003" in results.category_list
+    assert "HHS_HCC004" in results.dropped_category_list
+
+    # Check hierarchy and group dropping categories
+    # HCC020 should drop HCC021 and then the group
+    # should drop HCC020
+    results = model.score(
+        gender="M",
+        metal_level="Silver",
+        csr_indicator=1,
+        enrollment_days=365,
+        diagnosis_codes=["E119", "E11610"],
+        age=54,
+        verbose=False,
+    )
+    assert "G01" in results.category_list
+    assert "HHS_HCC021" in results.dropped_category_list
+    assert "HHS_HCC020" in results.dropped_category_list

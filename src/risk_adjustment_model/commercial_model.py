@@ -1,5 +1,5 @@
 import copy
-from typing import Union, Type, List
+from typing import Union, Type, List, Tuple
 from .utilities import determine_age_band
 from .beneficiary import CommercialBeneficiary
 from .category import Category
@@ -162,6 +162,9 @@ class CommercialModel(BaseModel):
         else:
             unique_categories = demo_categories
 
+        # Create a placeholder for this to be used later
+        dropped_categories = []
+
         # At this point the model groups start diverging thus a separate method for
         # infants
         if beneficiary.risk_model_age_group == "Infant":
@@ -195,9 +198,19 @@ class CommercialModel(BaseModel):
                     )
                     for category in unique_categories
                 ]
-            categories = self._apply_hierarchies(categories)
+            categories, dropped_hierarchy_categories = self._apply_hierarchies(
+                categories
+            )
             categories = self._determine_interactions(categories, beneficiary)
-            categories = self._apply_groups(categories, beneficiary)
+            categories, dropped_group_categories = self._apply_groups(
+                categories, beneficiary
+            )
+
+            # Add the dropped categories to their own list to return in results
+            if dropped_hierarchy_categories:
+                dropped_categories.extend(dropped_hierarchy_categories)
+            if dropped_group_categories:
+                dropped_categories.extend(dropped_group_categories)
 
         score_raw = sum([category.coefficient for category in categories])
         disease_score_raw = sum(
@@ -216,6 +229,13 @@ class CommercialModel(BaseModel):
         )
 
         category_details = self._build_category_details(categories, verbose)
+
+        if dropped_categories:
+            dropped_category_details = self._build_category_details(
+                dropped_categories, verbose
+            )
+        else:
+            dropped_category_details = None
 
         results = CommercialScoringResult(
             gender=beneficiary.gender,
@@ -241,6 +261,10 @@ class CommercialModel(BaseModel):
             demographic_score=self._apply_csr_adj(demographic_score_raw),
             category_list=[category.category for category in categories],
             category_details=category_details,
+            dropped_category_list=[
+                category.category for category in dropped_categories
+            ],
+            dropped_category_details=dropped_category_details,
         )
 
         return results
@@ -358,7 +382,7 @@ class CommercialModel(BaseModel):
 
     def _apply_hierarchies(
         self, categories: List[Type[Category]]
-    ) -> List[Type[Category]]:
+    ) -> Tuple[List[Type[Category]], List[Type[Category]]]:
         """
         Filters out categories falling into hierarchies per the model hierarchy_definition file.
 
@@ -393,18 +417,21 @@ class CommercialModel(BaseModel):
             if dropped_codes:
                 category.dropped_categories = dropped_codes
 
-        # Remove objects from list
-        final_categories = [
-            category
-            for category in categories
-            if category.category not in dropped_codes_total
-        ]
+        final_categories = []
+        dropped_categories = []
 
-        return final_categories
+        # Remove the dropped codes and store them in a separate list
+        for category in categories:
+            if category.category not in dropped_codes_total:
+                final_categories.append(category)
+            else:
+                dropped_categories.append(category)
+
+        return final_categories, dropped_categories
 
     def _apply_groups(
         self, categories: List[Type[Category]], beneficiary
-    ) -> List[Type[Category]]:
+    ) -> Tuple[List[Type[Category]], List[Type[Category]]]:
         """
         Assigns groups based on the "remove_codes" the member has and
         adds the group category and filters out the normal categories per the model
@@ -443,12 +470,15 @@ class CommercialModel(BaseModel):
                 else:
                     group_dict[group_category] = [category]
 
-        # Remove objects from list
-        final_categories = [
-            category
-            for category in categories
-            if category.category not in dropped_codes_total
-        ]
+        final_categories = []
+        dropped_categories = []
+
+        # Remove the dropped codes and store them in a separate list
+        for category in categories:
+            if category.category not in dropped_codes_total:
+                final_categories.append(category)
+            else:
+                dropped_categories.append(category)
 
         # Add groups to the list
         # Since "categories" trigger the code, they are both
@@ -467,7 +497,7 @@ class CommercialModel(BaseModel):
         if group_categories:
             final_categories.extend(group_categories)
 
-        return final_categories
+        return final_categories, dropped_categories
 
     def _get_dx_categories(
         self, diagnosis_codes: List[str], beneficiary: Type[CommercialBeneficiary]

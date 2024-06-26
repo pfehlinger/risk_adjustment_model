@@ -139,3 +139,5 @@ class CommercialScoringResult(BaseScoringResult):
     last_enrollment_date: Union[str, None]
     enrollment_months: float
     csr_adjuster: float
+    dropped_category_list: Union[List[str], None]
+    dropped_category_details: Union[Dict[str, str], None]
