@@ -1403,6 +1403,11 @@ class CommercialModelV07(CommercialModel):
             "HHS_HCC254",
         ]
 
+        # In 2025 HHS_HCC071 is a higher severity
+        if self.model_year == 2025:
+            severity_1_hccs.remove("HHS_HCC071")
+            severity_2_hccs.append("HHS_HCC071")
+
         severity_status = None
 
         if any(category in category_list for category in severity_5_hccs):

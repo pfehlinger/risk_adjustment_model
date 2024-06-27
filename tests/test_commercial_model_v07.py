@@ -119,6 +119,65 @@ def test_category_groups():
     assert "HHS_HCC028" in results.category_details["G02D"]["dropped_categories"]
     assert "HHS_HCC029" in results.category_details["G02D"]["dropped_categories"]
 
+    # Starting in 2024, a new group exists G24 for adult model
+    # it is for HCC18 and 183
+    model = CommercialModelV07(year=2024)
+    results = model.score(
+        gender="M",
+        metal_level="Silver",
+        csr_indicator=1,
+        enrollment_days=365,
+        diagnosis_codes=["Z940"],
+        age=57,
+        verbose=True,
+    )
+    assert "G24" in results.category_list
+    assert "HHS_HCC183" not in results.category_list
+    assert "HHS_HCC183" in results.category_details["G24"]["dropped_categories"]
+
+    model = CommercialModelV07(year=2025)
+    results = model.score(
+        gender="M",
+        metal_level="Silver",
+        csr_indicator=1,
+        enrollment_days=365,
+        diagnosis_codes=["Z940"],
+        age=57,
+        verbose=True,
+    )
+    assert "G24" in results.category_list
+    assert "HHS_HCC183" not in results.category_list
+    assert "HHS_HCC183" in results.category_details["G24"]["dropped_categories"]
+
+    # In 2025 G07A is no longer group
+    # First test it is still exists for 2024
+    model = CommercialModelV07(year=2024)
+    results = model.score(
+        gender="M",
+        metal_level="Silver",
+        csr_indicator=1,
+        enrollment_days=365,
+        diagnosis_codes=["D5700"],
+        age=57,
+        verbose=True,
+    )
+    assert "G07A" in results.category_list
+    assert "HHS_HCC070" not in results.category_list
+    assert "HHS_HCC070" in results.category_details["G07A"]["dropped_categories"]
+
+    model = CommercialModelV07(year=2025)
+    results = model.score(
+        gender="M",
+        metal_level="Silver",
+        csr_indicator=1,
+        enrollment_days=365,
+        diagnosis_codes=["D5700"],
+        age=57,
+        verbose=True,
+    )
+    assert "G07A" not in results.category_list
+    assert "HHS_HCC070" in results.category_list
+
 
 def test_demo_category_mapping():
     model = CommercialModelV07(year=2023)
@@ -402,11 +461,42 @@ def test_infant_severity():
         metal_level="Silver",
         csr_indicator=1,
         enrollment_days=38,
-        diagnosis_codes=["Z051", "Z23", "Z3800"],
+        diagnosis_codes=["Z3800"],
         age=0,
         verbose=False,
     )
     assert "Term_x_Severity1" in results.category_list
+
+    # In 2025, HCC071 moved up severity level
+    # Test it is level 1 prior
+    results = model.score(
+        gender="M",
+        metal_level="Silver",
+        csr_indicator=1,
+        enrollment_days=38,
+        diagnosis_codes=[
+            "Z3800",
+            "D562",  # HCC071
+        ],
+        age=0,
+        verbose=False,
+    )
+    assert "Term_x_Severity1" in results.category_list
+
+    model = CommercialModelV07(year=2025)
+    results = model.score(
+        gender="M",
+        metal_level="Silver",
+        csr_indicator=1,
+        enrollment_days=38,
+        diagnosis_codes=[
+            "Z3800",
+            "D562",  # HCC071
+        ],
+        age=0,
+        verbose=False,
+    )
+    assert "Term_x_Severity2" in results.category_list
 
 
 def test_interactions():
