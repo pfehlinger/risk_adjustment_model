@@ -2,7 +2,7 @@ from typing import Union, Type, List
 from .utilities import determine_age_band
 from .beneficiary import MedicareBeneficiary
 from .category import Category
-from .result import ScoringResult
+from .result import MedicareScoringResult
 from .mapper import DxCodeCategory
 from .model import BaseModel
 
@@ -63,7 +63,7 @@ class MedicareModel(BaseModel):
         dob: Union[str, None] = None,
         population: str = "CNA",
         verbose: bool = False,
-    ) -> Type[ScoringResult]:
+    ) -> Type[MedicareScoringResult]:
         """
         Determines the risk score for the inputs. Entry point for end users.
 
@@ -86,7 +86,7 @@ class MedicareModel(BaseModel):
             verbose (bool): Indicates if trimmed output or full output is desired
 
         Returns:
-            ScoringResult: An instantiated object of ScoringResult class.
+            MedicareScoringResult: An instantiated object of ScoringResult class.
         """
         beneficiary = MedicareBeneficiary(
             gender, orec, medicaid, population, age, dob, self.model_year
@@ -156,7 +156,7 @@ class MedicareModel(BaseModel):
 
         category_details = self._build_category_details(categories, verbose)
 
-        results = ScoringResult(
+        results = MedicareScoringResult(
             gender=beneficiary.gender,
             orec=beneficiary.orec,
             medicaid=beneficiary.medicaid,

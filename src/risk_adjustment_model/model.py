@@ -33,7 +33,7 @@ class BaseModel:
         self.year = year
         self.model_year = self._get_model_year()
         self.data_directory = self._get_data_directory()
-        self.reference_files = ReferenceFilesLoader(self.data_directory)
+        self.reference_files = ReferenceFilesLoader(self.data_directory, lob)
 
     def _get_model_year(self) -> int:
         """

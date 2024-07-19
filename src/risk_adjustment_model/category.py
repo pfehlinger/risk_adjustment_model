@@ -94,12 +94,14 @@ class Category:
     def _get_number(self, category: str):
         """
         Retrieve the number associated with the category from the reference files.
+        For medicare this will be an integer, for commercial it will be a string due to
+        some categories have 87_2.
 
         Args:
             category (str): The name of the category.
 
         Returns:
-            int or None: The number associated with the category, or None if not found.
+            int or str or None: The number associated with the category, or None if not found.
 
         """
         return self.reference_files.category_definitions[category].get("number", None)
