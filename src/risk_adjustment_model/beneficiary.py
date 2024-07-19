@@ -226,31 +226,24 @@ class MedicareBeneficiary(Beneficiary):
 class CommercialBeneficiary(Beneficiary):
     """
     Represents a Commercial beneficiary which expands upon the Beneficiary class and
-    requires additional Commercial specific attributes: metal level, and population.
-    See __init__ for more detailed description of these attributes
+    requires additional Commercial-specific attributes: metal level, enrollment days,
+    CSR indicator, and last enrollment date.
 
     Attributes:
-        gender (str): The gender of the Medicare beneficiary.
-        metal_level (str):
-        medicaid (bool): Indicates whether the beneficiary has Medicaid.
-        population (str, optional): The Medicare population type (default is "CNA").
+        gender (str): The gender of the Commercial beneficiary.
+        metal_level (str): The metal level of the beneficiary's insurance plan (e.g., Bronze, Silver).
+        enrollment_days (int): The number of days the beneficiary has been enrolled.
+        csr_indicator (int): The cost-sharing reduction indicator. Values are 1, 2, 3, 4
         age (int, optional): The age of the Commercial beneficiary.
         dob (str, optional): The date of birth of the Commercial beneficiary in ISO format.
-        disabled (bool): Indicates if the beneficiary is disabled.
-        orig_disabled (bool): Indiciates if the beneficiary was originally disabled.
-        risk_model_age (int): Age of the benficiary used in the model scoring calculations.
-                              Per HHS, it is age of the beneficiary as of the last day of
-                              the enrollment period of that beneficiary.
-        risk_model_population (str): The derived population for the beneficiary based on all
-                                     beneficiary attributes. This is necessary as in the
-                                     Community model, CMS New Enrollees are broken into four
-                                     subpopulations based on Medicaid status and whether or
-                                     not the beneficiary was "originally disabled". By only
-                                     requiring "NE" to be passed in for a population value,
-                                     users do not need to know how to determine the four
-                                     additional subpopulations and the code does it for
-                                     them. See _get_new_enrollee_population for more details.
+        model_year (int, optional): The model year associated with the beneficiary.
+        last_enrollment_date (str, optional): The last enrollment date of the beneficiary in ISO format.
+        risk_model_age (int): The age of the beneficiary used in model scoring calculations.
+        risk_model_age_group (str): The age group of the beneficiary (Infant, Child, Adult).
+        risk_model_population (str): The derived population for the beneficiary.
+        enrollment_months (int): The number of months the beneficiary has been enrolled.
 
+    See __init__ for more detailed descriptions of these attributes.
     """
 
     def __init__(
@@ -262,38 +255,27 @@ class CommercialBeneficiary(Beneficiary):
         age: Union[None, int] = None,
         dob: Union[None, str] = None,
         model_year: Union[None, int] = None,
-        last_enrollement_date: Union[None, str] = None,
+        last_enrollment_date: Union[None, str] = None,
     ):
         """
         Initialize a CommercialBeneficiary object.
 
         Args:
-            gender (str): The gender of the Medicare beneficiary.
-            orec (str): The original reason entitlement code. See the below link for more information:
-                        https://resdac.org/cms-data/variables/medicare-original-reason-entitlement-code-orec
-            medicaid (bool): A boolean indicating whether the beneficiary has Medicaid.
-            population (str, optional): The Medicare population type which the benficiary is
-                                        associated with and the score is being computed for.
-                                        Valid values are:
-                                        CNA - Community, Non Dual, Aged (default)
-                                        CND - Community, Non Dual, Disabled
-                                        CPA - Community, Partial Dual, Aged
-                                        CPD - Community, Partial Dual, Disabled
-                                        CFA - Community, Full Dual, Aged
-                                        CFD - Community, Full Dual, Disabled
-                                        INS - Institutional
-                                        NE - CMS New Enrollee
-            age (int, optional): The age of the Medicare beneficiary.
-            dob (str, optional): The date of birth of the Medicare beneficiary in ISO format.
-            model_year (int, optional): The model year which this beneficiary object is associated with.
-                              It is necessary to determine the age of the beneficiary if dob is passed in.
+            gender (str): The gender of the Commercial beneficiary.
+            metal_level (str): The metal level of the beneficiary's insurance plan (default is "Bronze").
+            enrollment_days (int): The number of days the beneficiary has been enrolled (default is 365).
+            csr_indicator (int): The cost-sharing reduction indicator (default is 1).
+            age (int, optional): The age of the Commercial beneficiary.
+            dob (str, optional): The date of birth of the Commercial beneficiary in ISO format.
+            model_year (int, optional): The model year associated with the beneficiary.
+            last_enrollment_date (str, optional): The last enrollment date of the beneficiary in ISO format.
         """
         super().__init__(gender, age, dob)
         self.metal_level = metal_level
         self.enrollment_days = enrollment_days
         self.csr_indicator = csr_indicator
         self.model_year = model_year
-        self.last_enrollment_date = last_enrollement_date
+        self.last_enrollment_date = last_enrollment_date
         self.risk_model_age = self._determine_age(self.age, self.dob)
         self.risk_model_age_group = self._determine_age_group(self.risk_model_age)
         self.risk_model_population = self.metal_level
@@ -313,14 +295,14 @@ class CommercialBeneficiary(Beneficiary):
            relative to that date. That benefit year must also be provided.
 
         Args:
-            age (int): The age of the beneficiary.
-            dob (str): The date of birth of the beneficiary in ISO format.
+            age (int, optional): The age of the beneficiary.
+            dob (str, optional): The date of birth of the beneficiary in ISO format.
 
         Returns:
-            int: The age of the beneficiary as of February 1st of the payment year.
+            int: The age of the beneficiary as of the last enrollment date of the benefit year.
 
-        If age is provided, it is assumed to be correct as of February 1st of the payment year.
-        If DOB is provided, it computes the age relative to February 1st of the payment year.
+        Raises:
+            ValueError: If DOB is provided but the last enrollment date is not provided.
         """
         if dob:
             if self.last_enrollment_date is None:
@@ -342,43 +324,56 @@ class CommercialBeneficiary(Beneficiary):
 
         return model_age
 
-    def _determine_age_group(self, age: int):
-        age_group = None
+    def _determine_age_group(self, age: int) -> str:
+        """
+        Determine the age group of the beneficiary based on their age.
 
+        Args:
+            age (int): The age of the beneficiary.
+
+        Returns:
+            str: The age group of the beneficiary. Possible values are "Infant", "Child", "Adult".
+        """
         if age < 2:
-            age_group = "Infant"
+            return "Infant"
         elif 2 <= age < 21:
-            age_group = "Child"
+            return "Child"
         else:
-            age_group = "Adult"
+            return "Adult"
 
-        return age_group
+    def _determine_enrollment_months(self, enrollment_days: int) -> int:
+        """
+        Determine the enrollment duration in months based on the number of enrollment days.
 
-    def _determine_enrollment_months(self, enrollment_days: int):
-        enrollment_months = 0
+        Args:
+            enrollment_days (int): The number of days the beneficiary has been enrolled.
+
+        Returns:
+            int: The number of months the beneficiary has been enrolled.
+        """
         if 1 <= enrollment_days <= 31:
-            enrollment_months = 1
+            return 1
         elif 32 <= enrollment_days <= 62:
-            enrollment_months = 2
+            return 2
         elif 63 <= enrollment_days <= 92:
-            enrollment_months = 3
+            return 3
         elif 93 <= enrollment_days <= 123:
-            enrollment_months = 4
+            return 4
         elif 124 <= enrollment_days <= 153:
-            enrollment_months = 5
+            return 5
         elif 154 <= enrollment_days <= 184:
-            enrollment_months = 6
+            return 6
         elif 185 <= enrollment_days <= 214:
-            enrollment_months = 7
+            return 7
         elif 215 <= enrollment_days <= 245:
-            enrollment_months = 8
+            return 8
         elif 246 <= enrollment_days <= 275:
-            enrollment_months = 9
+            return 9
         elif 276 <= enrollment_days <= 306:
-            enrollment_months = 10
+            return 10
         elif 307 <= enrollment_days <= 335:
-            enrollment_months = 11
+            return 11
         elif 336 <= enrollment_days <= 366:
-            enrollment_months = 12
-
-        return enrollment_months
+            return 12
+        else:
+            return 0

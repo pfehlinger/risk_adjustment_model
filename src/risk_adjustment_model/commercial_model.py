@@ -32,15 +32,19 @@ class CommercialModel(BaseModel):
             _build_category_details
         Methods unlikely needing overwriting but could happen based on needs:
             _apply_hierarchies
+            _apply_groups
             _determine_demographic_categories
             _get_dx_categories
-            _get_coding_intensity_adjuster
+            _get_ndc_categories
+            _get_proc_categories
+            _determine_infant_categories
         Methods likely needing overwriting, e.g.:
+            _determine_infant_maturity_status
+            _determine_infant_severity_level
             _determine_age_gender_category
             _determine_disease_interactions
             _age_sex_edits
-            _get_normalization_factor
-        Helper methods to not override, e.g.: _apply_norm_factor_coding_adj
+        Helper methods to not override, e.g.: _apply_csr_adj
     """
 
     def __init__(self, version: str, year: Union[int, None] = None):
@@ -71,21 +75,25 @@ class CommercialModel(BaseModel):
 
         Steps:
         1. Use beneficiary information to get the demographic categories
-        2. Using diagnosis code inputs and beneficiary information get the diagnosis code to
-           category relationship
-        3. Get the unique set of categories from diagnosis codes
+        2. Using diagnosis code, ndc, and procedure code inputs and beneficiary information
+           to get the code to category relationship
+        3. Get the unique set of categories from the codes
         4. Apply hierarchies
         5. Determine disease interactions
+        6. Apply groups
 
         Args:
             gender (str): Gender of the beneficiary being scored, valid values M or F.
-            orec (str): Original Entitlement Reason Code of the beneficiary. See: https://bluebutton.cms.gov/assets/ig/ValueSet-orec.html for valid values
-            medicaid (bool): Beneficiary medicaid status, True or False
-            diagnosis_codes (list): List of the diagnosis codes associated with the beneficiary
-            age (int): Age of the beneficiary, can be None.
-            dob (str): Date of birth of the beneficiary, can be None
-            population (str): Population of beneficiary being scored, valid values are CNA, CND, CPA, CPD, CFA, CFD, INS, NE
-            verbose (bool): Indicates if trimmed output or full output is desired
+            metal_level (str): Metal level of the beneficiary's insurance plan.
+            csr_indicator (int): Cost-sharing reduction indicator.
+            enrollment_days (int): Number of days the beneficiary has been enrolled.
+            diagnosis_codes (list, optional): List of the diagnosis codes associated with the beneficiary, can be None.
+            ndc_codes (list, optional): List of National Drug Codes (NDC) associated with the beneficiary, can be None.
+            proc_codes (list, optional): List of procedure codes associated with the beneficiary, can be None.
+            age (int, optional): Age of the beneficiary, can be None.
+            dob (str, optional): Date of birth of the beneficiary, can be None.
+            last_enrollment_date (str, optional): Last enrollment date of the beneficiary, can be None.
+            verbose (bool): Indicates if trimmed output or full output is desired.
 
         Returns:
             ScoringResult: An instantiated object of ScoringResult class.
@@ -100,7 +108,6 @@ class CommercialModel(BaseModel):
             self.model_year,
             last_enrollment_date,
         )
-        # PF: Don't love this here, will want to refactor
         self.csr_adjuster = self._get_csr_adjuster(self.model_year, csr_indicator)
 
         # The way the Commercial Model is designed is that the model determines categories
@@ -126,10 +133,10 @@ class CommercialModel(BaseModel):
                 dx_categories = self._get_dx_categories(diagnosis_codes, beneficiary)
                 mapper_categories.extend(dx_categories)
             if ndc_codes:
-                ndc_categories = self._get_ndc_categories(ndc_codes, beneficiary)
+                ndc_categories = self._get_ndc_categories(ndc_codes)
                 mapper_categories.extend(ndc_categories)
             if proc_codes:
-                proc_categories = self._get_proc_categories(proc_codes, beneficiary)
+                proc_categories = self._get_proc_categories(proc_codes)
                 mapper_categories.extend(proc_categories)
 
             # Some diagnosis codes go to more than one category thus the category is a list
@@ -272,6 +279,31 @@ class CommercialModel(BaseModel):
     def _build_category_details(
         self, categories: List[Type[Category]], verbose: bool
     ) -> dict:
+        """
+        Constructs a dictionary with details about each category based on the given list of Category objects.
+
+        Args:
+            categories (list[Category]): A list of Category objects to build the details from.
+            verbose (bool): Flag indicating whether to include detailed information in the output.
+
+        Returns:
+            dict: A dictionary with category details. If verbose is True, includes extended information
+                such as type, category number, description, and dropped categories. Otherwise, includes
+                only coefficient and trigger code map.
+
+        The structure of the returned dictionary is as follows:
+            {
+                "category_name": {
+                    "coefficient": float,
+                    "type": str,  # Included only if verbose is True
+                    "category_number": int,  # Included only if verbose is True
+                    "category_description": str,  # Included only if verbose is True
+                    "dropped_categories": list,  # Included only if verbose is True
+                    "trigger_code_map": dict,
+                },
+                ...
+            }
+        """
         # Combine the dictionaries to make output
         category_details = {}
         for category in categories:
@@ -316,16 +348,30 @@ class CommercialModel(BaseModel):
         return demo_cats
 
     def _determine_infant_categories(
-        self, unique_categories, beneficiary
+        self, unique_categories: List[str], beneficiary: Type[CommercialBeneficiary]
     ) -> List[Type[Category]]:
         """
-        This combines multiple steps in the other models into one as the Infant model
-        doesn't follow the same steps as the other models. An infant has a
-        demographic component and then an "interaction category" that is based on
-        the severity level and maturity status based on the categories their diagnosis
-        codes map to.
-        """
+        Determines the categories for an infant beneficiary, combining demographic and interaction categories
+        based on the severity level and maturity status derived from their diagnosis codes.
 
+        The function integrates multiple steps specific to the Infant model, which differs from other models
+        by combining demographic components with interaction categories. These interaction categories are determined
+        by the severity level and maturity status derived from the diagnosis codes.
+
+        Args:
+            unique_categories (List[str]): A list of unique categories derived from the beneficiary's diagnosis codes.
+            beneficiary (CommercialBeneficiary): An object representing the beneficiary being scored, containing demographic
+                                                and other relevant information.
+
+        Returns:
+            List[Category]: A list of Category objects representing the combined demographic and interaction categories for the infant.
+
+        The function follows these steps:
+        1. Creates a list of Category objects based on the demographic categories from the unique_categories list, excluding those starting with "HHS_HCC".
+        2. Determines the maturity status and severity level of the infant based on the unique categories.
+        3. If both maturity status and severity level are determined, creates and adds an interaction category combining both.
+        4. Handles a specific scenario where an infant's age is 0, but the maturity level indicates Age1, ensuring the correct demographic category is assigned.
+        """
         # If infants don't have disease categories, can't compute the maturity and
         # severity level, so first build the categories list based on demographic
         # then consider the ones based on categories
@@ -430,7 +476,7 @@ class CommercialModel(BaseModel):
         return final_categories, dropped_categories
 
     def _apply_groups(
-        self, categories: List[Type[Category]], beneficiary
+        self, categories: List[Type[Category]], beneficiary: Type[CommercialBeneficiary]
     ) -> Tuple[List[Type[Category]], List[Type[Category]]]:
         """
         Assigns groups based on the "remove_codes" the member has and
@@ -529,9 +575,7 @@ class CommercialModel(BaseModel):
 
         return dx_categories
 
-    def _get_ndc_categories(
-        self, ndc_codes: List[str], beneficiary: Type[CommercialBeneficiary]
-    ) -> List[Type[NDCCodeCategory]]:
+    def _get_ndc_categories(self, ndc_codes: List[str]) -> List[Type[NDCCodeCategory]]:
         """
         Generates diagnosis code to categories relationships based on provided diagnosis codes
         and beneficiary information.
@@ -551,7 +595,7 @@ class CommercialModel(BaseModel):
         return ndc_categories
 
     def _get_proc_categories(
-        self, proc_codes: List[str], beneficiary: Type[CommercialBeneficiary]
+        self, proc_codes: List[str]
     ) -> List[Type[ProcCodeCategory]]:
         """
         Generates diagnosis code to categories relationships based on provided diagnosis codes
@@ -571,20 +615,14 @@ class CommercialModel(BaseModel):
 
         return proc_code_categories
 
-    def _get_csr_adjuster(self, year: int, csr_indicator: int) -> float:
+    def _get_csr_adjuster(self, year: int, csr_indicator: str) -> float:
         """
-        Gets the appropriate coding intensity adjuster for the model year as outlined by
-        CMS in their annual Annoucements:
-        https://www.cms.gov/medicare/payment/medicare-advantage-rates-statistics/announcements-and-documents
+        Gets the appropriate CSR adjuster for the model year as outlined by
+        CMS in their DIY Technical PDF Guidance:
+        https://www.cms.gov/marketplace/resources/regulations-guidance
 
         Returns:
             float: The coding intensity adjuster.
-
-        Notes:
-            In the documents, the coding intensity adjuster is listed as a small decimal, e.g.
-            .059. In scoring calculations, the adjuster is applied by doing score * (1-.059).
-            Thus, the below already represents the 1-.059 for convenience.
-            Most years, the coding intensity adjuster is the statuatory minimum of .059.
         """
         csr_adjuster_dict = {
             2019: {"1": 1.00, "2": 1.07, "3": 1.12, "4": 1.15},
@@ -687,7 +725,35 @@ class CommercialModel(BaseModel):
         """
         return ["NA"]
 
-    def _determine_infant_maturity_status(self, category_list, beneficiary):
+    def _determine_infant_maturity_status(
+        self, category_list: List[str], beneficiary: Type[CommercialBeneficiary]
+    ):
+        """
+        Determines the maturity status of an infant based on their age and associated diagnosis categories.
+
+        This function assesses the maturity status of an infant beneficiary by considering their age and
+        the presence of specific diagnosis categories. It assigns a maturity status that reflects the
+        infant's developmental stage.
+
+        Args:
+            category_list (List[str]): A list of diagnosis categories associated with the beneficiary.
+            beneficiary (CommercialBeneficiary): An object representing the beneficiary being scored, containing demographic
+                                                and other relevant information, including age.
+
+        Returns:
+            str: The maturity status of the infant. Possible values include:
+                - "Age1" for infants aged 1 year or if no relevant categories are present
+                - "Extremely_Immature" for specific categories indicating extreme immaturity
+                - "Immature" for specific categories indicating immaturity
+                - "Premature_Multiples" for categories indicating premature multiples
+                - "Term" for the category indicating a term birth
+
+        Notes:
+            - The maturity status is determined based on the presence of specific diagnosis categories
+            in the category_list.
+            - If the infant is 1 year old, the maturity status is set to "Age1" regardless of the categories.
+            - If no relevant categories are present in the category_list, the maturity status defaults to "Age1".
+        """
         maturity_status = None
 
         # If infant is 1, then maturity status is Age1
@@ -727,7 +793,31 @@ class CommercialModel(BaseModel):
 
         return maturity_status
 
-    def _determine_infant_severity_level(self, category_list):
+    def _determine_infant_severity_level(self, category_list: List[str]):
+        """
+        Determines the severity level of an infant based on their associated diagnosis categories.
+
+        This function evaluates the severity level of an infant beneficiary by checking the presence
+        of specific diagnosis categories in the category_list. The severity level is assigned based
+        on predefined severity categories.
+
+        Args:
+            category_list (List[str]): A list of diagnosis categories associated with the beneficiary.
+
+        Returns:
+            str: The severity level of the infant. Possible values include:
+                - "Severity5" for the highest severity level
+                - "Severity4" for high severity level
+                - "Severity3" for moderate severity level
+                - "Severity2" for low severity level
+                - "Severity1" for the lowest severity level (default)
+
+        Notes:
+            - The function checks the presence of diagnosis categories in the following order:
+            Severity5, Severity4, Severity3, Severity2, and Severity1.
+            - The first matching severity level determines the severity status of the infant.
+            - If no matching categories are found, the default severity status is "Severity1".
+        """
         severity_5_hccs = [
             "HHS_HCC008",
             "HHS_HCC018",

@@ -10,10 +10,9 @@ class CommercialModelV07(CommercialModel):
     This class represents the V07 Model for Commercial. It inherits from the CommercialModel class.
 
     Methods:
-        __init__: Initializes the MedicareModelV24 instance.
+        __init__: Initializes the CommercialModelV07 instance.
 
         Overwrites:
-            _get_normalization_factor: Retrieves the normalization factor based on the model year.
             _age_sex_edits: Applies age and sex edits to diagnosis codes.
             _determine_disease_interactions: Determines disease interactions based on Category objects and beneficiary information.
 
@@ -23,9 +22,7 @@ class CommercialModelV07(CommercialModel):
             _determine_demographic_interactions: Determines demographic interactions based on gender, disability status, and Medicaid enrollment.
 
         New:
-            _age_sex_edit_1: Applies age and sex edit 1 to a diagnosis code.
-            _age_sex_edit_2: Applies age and sex edit 2 to a diagnosis code.
-            _age_sex_edit_3: Applies age and sex edit 3 to a diagnosis code.
+            _age_sex_edit_1 to _age_sex_edit_16: Applies 16 different age and sex edits to a diagnosis code.
     """
 
     def __init__(self, year: Union[int, None] = None):
@@ -1182,7 +1179,7 @@ class CommercialModelV07(CommercialModel):
 
     def _age_sex_edit_16(self, age: int, dx_code: str) -> Union[List[str], None]:
         """
-        Apply age and sex edit 15 to a diagnosis code.
+        Apply age and sex edit 16 to a diagnosis code.
 
         Args:
             age (int): Age of the individual.
@@ -1248,7 +1245,33 @@ class CommercialModelV07(CommercialModel):
 
         return interactions
 
-    def _determine_child_interactions(self, severe_illness, transplant, category_count):
+    def _determine_child_interactions(
+        self, severe_illness: bool, transplant: bool, category_count: int
+    ):
+        """
+        Determines the interaction categories for a child based on severe illness and transplant status.
+
+        This function evaluates whether a child has severe illness or has undergone a transplant,
+        and assigns interaction categories accordingly. It creates a dictionary of interaction
+        categories based on the severity and the number of diagnosis categories.
+
+        Args:
+            severe_illness (bool): Indicates whether the child has a severe illness.
+            transplant (bool): Indicates whether the child has undergone a transplant.
+            category_count (int): The number of diagnosis categories associated with the child.
+
+        Returns:
+            dict: A dictionary with the interaction categories as keys and None as values.
+                Possible keys include severe illness categories based on category count and
+                a transplant category if applicable.
+
+        Notes:
+            - Severe illness categories are defined based on the category count:
+                - "SEVERE_HCC_COUNT{count}" for counts <= 5
+                - "SEVERE_HCC_COUNT6_7" for counts between 6 and 7
+                - "SEVERE_HCC_COUNT8PLUS" for counts >= 8
+            - A transplant category "TRANSPLANT_HCC_COUNT4PLUS" is assigned if the category count is 4 or more.
+        """
         # Children only get the severe illness interactions and transplant
 
         interaction_dict = {}
@@ -1271,7 +1294,97 @@ class CommercialModelV07(CommercialModel):
 
         return interaction_dict
 
-    def _determine_infant_severity_level(self, category_list):
+    def _determine_infant_maturity_status(self, category_list, beneficiary):
+        """
+        Determines the maturity status of an infant based on their age and associated diagnosis categories.
+
+        This function assesses the maturity status of an infant beneficiary by considering their age and
+        the presence of specific diagnosis categories. It assigns a maturity status that reflects the
+        infant's developmental stage.
+
+        Args:
+            category_list (List[str]): A list of diagnosis categories associated with the beneficiary.
+            beneficiary (CommercialBeneficiary): An object representing the beneficiary being scored, containing demographic
+                                                and other relevant information, including age.
+
+        Returns:
+            str: The maturity status of the infant. Possible values include:
+                - "Age1" for infants aged 1 year or if no relevant categories are present
+                - "Extremely_Immature" for specific categories indicating extreme immaturity
+                - "Immature" for specific categories indicating immaturity
+                - "Premature_Multiples" for categories indicating premature multiples
+                - "Term" for the category indicating a term birth
+
+        Notes:
+            - The maturity status is determined based on the presence of specific diagnosis categories
+            in the category_list.
+            - If the infant is 1 year old, the maturity status is set to "Age1" regardless of the categories.
+            - If no relevant categories are present in the category_list, the maturity status defaults to "Age1".
+        """
+        maturity_status = None
+
+        # If infant is 1, then maturity status is Age1
+        # else it checks the categories associated with birth to determine status
+        if beneficiary.age == 1:
+            maturity_status = "Age1"
+        else:
+            if any(
+                category in category_list
+                for category in ["HHS_HCC242", "HHS_HCC243", "HHS_HCC244"]
+            ):
+                maturity_status = "Extremely_Immature"
+            elif any(
+                category in category_list for category in ["HHS_HCC245", "HHS_HCC246"]
+            ):
+                maturity_status = "Immature"
+            elif any(
+                category in category_list for category in ["HHS_HCC247", "HHS_HCC248"]
+            ):
+                maturity_status = "Premature_Multiples"
+            elif "HHS_HCC249" in category_list:
+                maturity_status = "Term"
+            elif all(
+                category not in category_list
+                for category in [
+                    "HHS_HCC242",
+                    "HHS_HCC243",
+                    "HHS_HCC244",
+                    "HHS_HCC245",
+                    "HHS_HCC246",
+                    "HHS_HCC247",
+                    "HHS_HCC248",
+                    "HHS_HCC249",
+                ]
+            ):
+                maturity_status = "Age1"
+
+        return maturity_status
+
+    def _determine_infant_severity_level(self, category_list: List[str]):
+        """
+        Determines the severity level of an infant based on their associated diagnosis categories.
+
+        This function evaluates the severity level of an infant beneficiary by checking the presence
+        of specific diagnosis categories in the category_list. The severity level is assigned based
+        on predefined severity categories.
+
+        Args:
+            category_list (List[str]): A list of diagnosis categories associated with the beneficiary.
+
+        Returns:
+            str: The severity level of the infant. Possible values include:
+                - "Severity5" for the highest severity level
+                - "Severity4" for high severity level
+                - "Severity3" for moderate severity level
+                - "Severity2" for low severity level
+                - "Severity1" for the lowest severity level (default)
+
+        Notes:
+            - The function checks the presence of diagnosis categories in the following order:
+            Severity5, Severity4, Severity3, Severity2, and Severity1.
+            - The first matching severity level determines the severity status of the infant.
+            - If no matching categories are found, the default severity status is "Severity1".
+        """
         severity_5_hccs = [
             "HHS_HCC008",
             "HHS_HCC018",
@@ -1425,53 +1538,34 @@ class CommercialModelV07(CommercialModel):
 
         return severity_status
 
-    def _determine_infant_maturity_status(self, category_list, beneficiary):
-        maturity_status = None
-
-        # If infant is 1, then maturity status is Age1
-        # else it checks the categories associated with birth to determine status
-        if beneficiary.age == 1:
-            maturity_status = "Age1"
-        else:
-            if any(
-                category in category_list
-                for category in ["HHS_HCC242", "HHS_HCC243", "HHS_HCC244"]
-            ):
-                maturity_status = "Extremely_Immature"
-            elif any(
-                category in category_list for category in ["HHS_HCC245", "HHS_HCC246"]
-            ):
-                maturity_status = "Immature"
-            elif any(
-                category in category_list for category in ["HHS_HCC247", "HHS_HCC248"]
-            ):
-                maturity_status = "Premature_Multiples"
-            elif "HHS_HCC249" in category_list:
-                maturity_status = "Term"
-            elif all(
-                category not in category_list
-                for category in [
-                    "HHS_HCC242",
-                    "HHS_HCC243",
-                    "HHS_HCC244",
-                    "HHS_HCC245",
-                    "HHS_HCC246",
-                    "HHS_HCC247",
-                    "HHS_HCC248",
-                    "HHS_HCC249",
-                ]
-            ):
-                maturity_status = "Age1"
-
-        return maturity_status
-
     def _determine_adult_interactions(
-        self, category_list, severe_illness, transplant, category_count, beneficiary
+        self,
+        category_list: List[str],
+        severe_illness: bool,
+        transplant: bool,
+        category_count: int,
+        beneficiary: Type[CommercialBeneficiary],
     ) -> dict:
         """
-        Since we want to retain the "triggering" codes for interactions will
-        have the values
+        Determines the interaction categories for an adult beneficiary based on their diagnosis categories, severe illness, transplant status, and enrollment duration.
 
+        This function evaluates various health conditions and their combinations to determine specific interaction categories. These interactions are based on the presence of certain diagnosis categories, severe illness, transplant status, and enrollment duration.
+
+        Args:
+            category_list (List[str]): A list of diagnosis categories associated with the beneficiary.
+            severe_illness (bool): Indicates whether the beneficiary has a severe illness.
+            transplant (bool): Indicates whether the beneficiary has undergone a transplant.
+            category_count (int): The number of diagnosis categories associated with the beneficiary.
+            beneficiary (CommercialBeneficiary): An object representing the beneficiary being scored, containing demographic and other relevant information.
+
+        Returns:
+            dict: A dictionary where keys are interaction categories and values are lists of triggering diagnosis categories.
+
+        Notes:
+            - Interaction categories are determined based on combinations of diagnosis categories related to liver, kidney, intestine, diabetes, autoimmune, and lung conditions.
+            - Severe illness and transplant interaction categories are included based on the category count.
+            - Enrollment duration interaction categories are also considered.
+            - If certain interaction conditions are met, specific interaction categories are added to the dictionary with the relevant triggering categories.
         """
         liver = [
             category
@@ -1585,7 +1679,25 @@ class CommercialModelV07(CommercialModel):
 
         return interactions_dict
 
-    def _determine_severe_illness_transplant_status(self, category_list):
+    def _determine_severe_illness_transplant_status(self, category_list: List[str]):
+        """
+        Determines the severe illness and transplant status of a beneficiary based on their diagnosis categories.
+
+        This function evaluates whether the beneficiary has a severe illness or has undergone a transplant by checking the presence of specific diagnosis categories in the category_list.
+
+        Args:
+            category_list (List[str]): A list of diagnosis categories associated with the beneficiary.
+
+        Returns:
+            tuple: A tuple containing two boolean values:
+                - severe_illness (bool): True if the beneficiary has a severe illness, otherwise False.
+                - transplant (bool): True if the beneficiary has undergone a transplant, otherwise False.
+
+        Notes:
+            - The function checks for specific diagnosis categories to determine the severe illness and transplant status.
+            - Categories indicating severe illness include various HHS_HCC codes such as "HHS_HCC002", "HHS_HCC003", "HHS_HCC004", etc.
+            - Categories indicating transplant include various HHS_HCC codes such as "HHS_HCC018", "HHS_HCC034", "HHS_HCC041", etc.
+        """
         severe_illness = any(
             category in category_list
             for category in [
@@ -1639,6 +1751,21 @@ class CommercialModelV07(CommercialModel):
         return severe_illness, transplant
 
     def _determine_enrollment_duration_category(self, category_count: int, beneficiary):
+        """
+        Determines the enrollment duration category for a beneficiary based on their category count and enrollment duration.
+
+        This function evaluates the enrollment duration category for a beneficiary if the category count is greater than 0 and the enrollment duration (in months) is 6 or less.
+
+        Args:
+            category_count (int): The number of diagnosis categories associated with the beneficiary.
+            beneficiary: An object representing the beneficiary being scored, containing demographic and other relevant information, including enrollment months.
+
+        Returns:
+            Union[str, None]: The enrollment duration category if applicable, otherwise None.
+
+        Notes:
+            - The function returns an enrollment duration category in the format "HCC_ED{months}" if the beneficiary has more than 0 categories and their enrollment duration is 6 months or less.
+        """
         enrollment_duration_category = None
         if category_count > 0:
             if beneficiary.enrollment_months <= 6:
