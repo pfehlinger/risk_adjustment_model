@@ -593,3 +593,14 @@ def test_dropped_categories():
     assert "G01" in results.category_list
     assert "HHS_HCC021" in results.dropped_category_list
     assert "HHS_HCC020" in results.dropped_category_list
+
+
+def test_refernce_files_version():
+    model = CommercialModelV07(year=2023)
+    assert "3.0" == model.reference_files_version
+
+    model = CommercialModelV07(year=2024)
+    assert "1.0" == model.reference_files_version
+
+    model = CommercialModelV07(year=2025)
+    assert "0.0" == model.reference_files_version

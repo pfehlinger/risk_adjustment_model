@@ -21,7 +21,7 @@ class CommercialModel(BaseModel):
     4.  Since each model has its own nuances, each model is its own class inheriting from this class.
 
     Attributes:
-
+    reference_files_version_dict: Contains the version of reference files and
 
     Notes:
         In terms of inheritance for child classes and how it relates to methods, the code is
@@ -45,16 +45,62 @@ class CommercialModel(BaseModel):
             _determine_disease_interactions
             _age_sex_edits
         Helper methods to not override, e.g.: _apply_csr_adj
+
+    For reference files, CMS historically releases 3 versions of the DIY software: July/August of Benefit Year (BY),
+    December of Benefit Year or January of the following year (e.g. Dec 2024 or Jan 2025), then a final version at the
+    close of the benefit year April BY+1 (so for BY2024 April 2025). Prior to the BY, CMS publishes the coefficient
+    factors and any category/group changes. Given this cadence, the convention will be
+    0.X = Anything before first DIY release
+    1.X = First DIY release
+    2.X = Second DIY release
+    3.X = Third DIY release
+
+    After the decmial would be for errata that CMS addresses or for bug fixes.
     """
+
+    reference_files_version_dict = {
+        9999: {
+            "version": "placeholder",  # should be 0.0, 1.0, 2.0, 3.0, etc. with decimals only being used if there is an errata or fix to one of the versions
+            "description": "placeholder",
+        }
+    }
 
     def __init__(self, version: str, year: Union[int, None] = None):
         super().__init__(lob="commercial", version=version, year=year)
+        self.reference_files_version = self._get_reference_files_version(year)
+        self.reference_files_description = self._get_reference_description(year)
         # The way the Commercial Model is designed is that the model determines categories
         # and score is based on the age group in addition to the diagnosis codes.
         # To handle this the category map contains as a key agegroup_hcc, this map now
         # needs to be pared down to the relevant model now that we know the age group
         # associated with the scoring run
         self.model_group_reference_files = copy.deepcopy(self.reference_files)
+
+    def _get_reference_files_version(self, year: Union[int, None]) -> str:
+        """
+        Get the reference version for the specified year.
+
+        Args:
+            year (int, optional): The year for which to get the reference version.
+
+        Returns:
+            str: The reference version for the specified year.
+        """
+        return self.reference_files_version_dict.get(year, {}).get("version", "Unknown")
+
+    def _get_reference_description(self, year: Union[int, None]) -> str:
+        """
+        Get the reference description for the specified year.
+
+        Args:
+            year (int, optional): The year for which to get the reference description.
+
+        Returns:
+            str: The reference description for the specified year.
+        """
+        return self.reference_files_version_dict.get(year, {}).get(
+            "description", "No description available"
+        )
 
     def score(
         self,

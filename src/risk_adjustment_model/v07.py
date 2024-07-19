@@ -17,13 +17,29 @@ class CommercialModelV07(CommercialModel):
             _determine_disease_interactions: Determines disease interactions based on Category objects and beneficiary information.
 
         Included for clarity:
-            _determine_payment_count_category: Determines the payment count category based on the number of categories provided.
-            _determine_age_gender_category: Determines the demographic category based on age, gender, and population.
-            _determine_demographic_interactions: Determines demographic interactions based on gender, disability status, and Medicaid enrollment.
+            _determine_infant_severity_level
+            _determine_infant_maturity_status
+            _determine_age_gender_category
+            _determine_demographic_interactions
 
         New:
             _age_sex_edit_1 to _age_sex_edit_16: Applies 16 different age and sex edits to a diagnosis code.
     """
+
+    reference_files_version_dict = {
+        2023: {
+            "version": "3.0",
+            "description": "April 10, 2024: Final 2023 Benefit Year Risk Adjustment HHS-Developed Risk Adjustment Model Algorithm 'Do It Yourself (DIY)' Software",
+        },
+        2024: {
+            "version": "1.0",
+            "description": "July 17, 2024: 2024 Benefit Year Risk Adjustment Updated HHS-Developed Risk Adjustment Model Algorithm 'Do It Yourself (DIY)' Software",
+        },
+        2025: {
+            "version": "0.0",
+            "description": "Using Benefit Year 2024 mappings; coefficients come from April 2, 2024 CMS-9895-F: Patient Protection and Affordable Care Act; HHS Notice of Benefit and Payment Parameters for 2025 (PDF)",
+        },
+    }
 
     def __init__(self, year: Union[int, None] = None):
         super().__init__("v07", year)
@@ -1681,7 +1697,7 @@ class CommercialModelV07(CommercialModel):
 
     def _determine_severe_illness_transplant_status(self, category_list: List[str]):
         """
-        Determines the severe illness and transplant status of a beneficiary based on their diagnosis categories.
+        Determines the severe illness and transplant status of a beneficiary based on their categories.
 
         This function evaluates whether the beneficiary has a severe illness or has undergone a transplant by checking the presence of specific diagnosis categories in the category_list.
 
@@ -1694,9 +1710,9 @@ class CommercialModelV07(CommercialModel):
                 - transplant (bool): True if the beneficiary has undergone a transplant, otherwise False.
 
         Notes:
-            - The function checks for specific diagnosis categories to determine the severe illness and transplant status.
-            - Categories indicating severe illness include various HHS_HCC codes such as "HHS_HCC002", "HHS_HCC003", "HHS_HCC004", etc.
-            - Categories indicating transplant include various HHS_HCC codes such as "HHS_HCC018", "HHS_HCC034", "HHS_HCC041", etc.
+            The DIY documentation uses a mixture of both groups and categories. This is translated into categories only.
+            Comments below might indicate which group the category belongs to, but should not be considered a "source of truth".
+            That would be the "group_definition.json"
         """
         severe_illness = any(
             category in category_list
