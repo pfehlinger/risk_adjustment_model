@@ -254,9 +254,14 @@ class CommercialModel(BaseModel):
             categories, dropped_hierarchy_categories = self._apply_hierarchies(
                 categories
             )
-            categories = self._determine_interactions(categories, beneficiary)
             categories, dropped_group_categories = self._apply_groups(
                 categories, beneficiary
+            )
+            # Count is based on categories and groups, so interactions occur after
+            # groups, however some interactions are based on categories dropped by
+            # groups, so the dropped categories are also passed in
+            categories = self._determine_interactions(
+                categories, beneficiary, dropped_group_categories
             )
 
             # Add the dropped categories to their own list to return in results
@@ -729,7 +734,10 @@ class CommercialModel(BaseModel):
         return demographic_category
 
     def _determine_interactions(
-        self, categories: List[Type[Category]], beneficiary: Type[CommercialBeneficiary]
+        self,
+        categories: List[Type[Category]],
+        beneficiary: Type[CommercialBeneficiary],
+        dropped_group_categories: List[Type[Category]],
     ) -> List[Type[Category]]:
         """
         Determines disease interactions based on provided Category objects and beneficiary information.

@@ -135,6 +135,28 @@ def test_category_groups():
     assert "HHS_HCC183" not in results.category_list
     assert "HHS_HCC183" in results.category_details["G24"]["dropped_categories"]
 
+    # Test that if both 18 and 183 are present, doesn't lead to double counting of
+    # categories
+    results = model.score(
+        gender="M",
+        metal_level="Silver",
+        csr_indicator=1,
+        enrollment_days=365,
+        diagnosis_codes=["B3781", "D84821", "Z9483", "T8610"],
+        age=57,
+        verbose=True,
+    )
+    assert "HHS_HCC006" in results.category_list
+    assert "G08" in results.category_list
+    assert "G24" in results.category_list
+    assert "SEVERE_HCC_COUNT3" in results.category_list
+    assert "HHS_HCC183" not in results.category_list
+    assert "HHS_HCC183" in results.category_details["G24"]["dropped_categories"]
+    assert "HHS_HCC018" not in results.category_list
+    assert "HHS_HCC018" in results.category_details["G24"]["dropped_categories"]
+    assert "HHS_HCC074" not in results.category_list
+    assert "HHS_HCC074" in results.category_details["G08"]["dropped_categories"]
+
     model = CommercialModelV07(year=2025)
     results = model.score(
         gender="M",
@@ -547,6 +569,21 @@ def test_interactions():
     assert "HHS_HCC056" in results.category_list
     assert "HHS_HCC048" in results.category_list
     assert "RXC_09_x_HCC056_057_and_048_041" in results.category_list
+
+    # "RXC_04_x_HCC184_183_187_188"
+    results = model.score(
+        gender="M",
+        metal_level="Silver",
+        csr_indicator=1,
+        enrollment_days=68,
+        diagnosis_codes=["I120"],
+        ndc_codes=["00004040109"],
+        age=54,
+        verbose=False,
+    )
+    assert "G16" in results.category_list
+    assert "HHS_HCC187" not in results.category_list
+    assert "RXC_04_x_HCC184_183_187_188" in results.category_list
 
 
 def test_dropped_categories():
