@@ -1351,6 +1351,7 @@ class CommercialModelV07(CommercialModel):
             in the category_list.
             - If the infant is 1 year old, the maturity status is set to "Age1" regardless of the categories.
             - If no relevant categories are present in the category_list, the maturity status defaults to "Age1".
+              In this situation, the beneficiary risk_model_age is set to 1 for alignment as well.
         """
         maturity_status = None
 
@@ -1388,6 +1389,7 @@ class CommercialModelV07(CommercialModel):
                 ]
             ):
                 maturity_status = "Age1"
+                beneficiary.risk_model_age = 1
 
         return maturity_status
 

@@ -521,6 +521,24 @@ def test_infant_severity():
     assert "Term_x_Severity2" in results.category_list
 
 
+def test_infant_age():
+    model = CommercialModelV07(year=2024)
+
+    results = model.score(
+        gender="M",
+        metal_level="Silver",
+        csr_indicator=1,
+        enrollment_days=38,
+        diagnosis_codes=[
+            "A0101",
+        ],
+        age=0,
+        verbose=False,
+    )
+    assert "Age1_Male" in results.category_list
+    assert results.risk_model_age == 1
+
+
 def test_interactions():
     model = CommercialModelV07(year=2023)
 
