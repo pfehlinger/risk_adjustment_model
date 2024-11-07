@@ -178,10 +178,11 @@ class CommercialModel(BaseModel):
             if diagnosis_codes:
                 dx_categories = self._get_dx_categories(diagnosis_codes, beneficiary)
                 mapper_categories.extend(dx_categories)
-            if ndc_codes:
+            # Only Adults get RXCs
+            if ndc_codes and beneficiary.risk_model_age_group == "Adult":
                 ndc_categories = self._get_ndc_categories(ndc_codes)
                 mapper_categories.extend(ndc_categories)
-            if proc_codes:
+            if proc_codes and beneficiary.risk_model_age_group == "Adult":
                 proc_categories = self._get_proc_categories(proc_codes)
                 mapper_categories.extend(proc_categories)
 

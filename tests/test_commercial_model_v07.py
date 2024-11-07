@@ -659,3 +659,31 @@ def test_refernce_files_version():
 
     model = CommercialModelV07(year=2025)
     assert "0.0" == model.reference_files_version
+
+
+def test_age_group_categories():
+    model = CommercialModelV07(year=2024)
+
+    results = model.score(
+        gender="M",
+        metal_level="Silver",
+        csr_indicator=1,
+        enrollment_days=365,
+        diagnosis_codes=["I120"],
+        ndc_codes=["00004040109"],
+        age=1,
+        verbose=False,
+    )
+    assert "RXC_04" not in results.category_list
+
+    results = model.score(
+        gender="M",
+        metal_level="Silver",
+        csr_indicator=1,
+        enrollment_days=365,
+        diagnosis_codes=["I120"],
+        ndc_codes=["00004040109"],
+        age=17,
+        verbose=False,
+    )
+    assert "RXC_04" not in results.category_list
