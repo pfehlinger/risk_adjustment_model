@@ -164,11 +164,11 @@ cython_debug/
 # be found at https://github.com/github/gitignore/blob/main/Global/VisualStudioCode.gitignore
 # and can be added to the global gitignore or merged into this file.
 .vscode/*
-!.vscode/settings.json
-!.vscode/tasks.json
-!.vscode/launch.json
-!.vscode/extensions.json
-!.vscode/*.code-snippets
+# !.vscode/settings.json
+# !.vscode/tasks.json
+# !.vscode/launch.json
+# !.vscode/extensions.json
+# !.vscode/*.code-snippets
 
 # Local History for Visual Studio Code
 .history/

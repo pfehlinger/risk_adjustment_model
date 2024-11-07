@@ -1208,7 +1208,10 @@ class CommercialModelV07(CommercialModel):
             return ["HHS_HCC021"]
 
     def _determine_interactions(
-        self, categories: List[Type[Category]], beneficiary: Type[CommercialBeneficiary]
+        self,
+        categories: List[Type[Category]],
+        beneficiary: Type[CommercialBeneficiary],
+        dropped_group_categories: List[Type[Category]],
     ) -> List[Type[Category]]:
         """
         Determines disease interactions based on provided Category objects and beneficiary information.
@@ -1217,9 +1220,15 @@ class CommercialModelV07(CommercialModel):
         Args:
             categories (List[Type[Category]]): List of Category objects representing disease categories.
             beneficiary (Type[CommercialBeneficiary]): Instance of CommercialBeneficiary representing the beneficiary information.
+            dropped_group_categories (List[Type[Category]]): List of Category objects of the HCCs dropped by groups.
 
         Returns:
             List[Type[Category]]: List of Category objects representing the disease interactions.
+
+        Notes:
+            The way the SAS code works is applying the group categories before determine count categories. However, some of the
+            interactions with RXC rely on HCCs that can get dropped as part of a group. Thus, the dropped_group_categories
+            are passed in as well and considered.
         """
         category_list = [
             category.category
@@ -1244,6 +1253,12 @@ class CommercialModelV07(CommercialModel):
                 severe_illness, transplant, category_count
             )
         else:
+            # For adults, the category_list needs to be extended to include dropped
+            # group categories
+            category_list.extend(
+                [category.category for category in dropped_group_categories]
+            )
+
             interaction_dict = self._determine_adult_interactions(
                 category_list, severe_illness, transplant, category_count, beneficiary
             )
@@ -1336,6 +1351,7 @@ class CommercialModelV07(CommercialModel):
             in the category_list.
             - If the infant is 1 year old, the maturity status is set to "Age1" regardless of the categories.
             - If no relevant categories are present in the category_list, the maturity status defaults to "Age1".
+              In this situation, the beneficiary risk_model_age is set to 1 for alignment as well.
         """
         maturity_status = None
 
@@ -1373,6 +1389,7 @@ class CommercialModelV07(CommercialModel):
                 ]
             ):
                 maturity_status = "Age1"
+                beneficiary.risk_model_age = 1
 
         return maturity_status
 
@@ -1710,9 +1727,11 @@ class CommercialModelV07(CommercialModel):
                 - transplant (bool): True if the beneficiary has undergone a transplant, otherwise False.
 
         Notes:
-            The DIY documentation uses a mixture of both groups and categories. This is translated into categories only.
-            Comments below might indicate which group the category belongs to, but should not be considered a "source of truth".
-            That would be the "group_definition.json"
+            The DIY documentation uses a mixture of both groups and categories. The underlying categories of the groups are
+            also included in the list as a group can be added or removed for a given model year but the underlying
+            HCCs are still valid. For example, HCC 18 and HCC 183 were their own standalone categories in 2023, however in 2024
+            they are now part of G24. So by including HCC 18, HCC 183, and G24 in the below lists, the code will work for both
+            2023 and 2024.
         """
         severe_illness = any(
             category in category_list
@@ -1721,7 +1740,6 @@ class CommercialModelV07(CommercialModel):
                 "HHS_HCC003",
                 "HHS_HCC004",
                 "HHS_HCC006",
-                "HHS_HCC018",
                 "HHS_HCC023",
                 "HHS_HCC034",
                 "HHS_HCC041",
@@ -1733,34 +1751,41 @@ class CommercialModelV07(CommercialModel):
                 # G13
                 "HHS_HCC126",
                 "HHS_HCC127",
+                "G13",
                 # G14
                 "HHS_HCC128",
                 "HHS_HCC129",
+                "G14",
                 ##
                 "HHS_HCC135",
                 "HHS_HCC145",
                 "HHS_HCC156",
                 "HHS_HCC158",
                 "HHS_HCC163",
-                "HHS_HCC183",
                 "HHS_HCC218",
                 "HHS_HCC223",
                 "HHS_HCC251",
+                # G24
+                "HHS_HCC018",
+                "HHS_HCC183",
+                "G24",
             ]
         )
         transplant = any(
             category in category_list
             for category in [
-                "HHS_HCC018",
                 "HHS_HCC034",
                 "HHS_HCC041",
                 # G14
                 "HHS_HCC128",
                 "HHS_HCC129",
-                ##
+                "G14",
                 "HHS_HCC158",
-                "HHS_HCC183",
                 "HHS_HCC251",
+                # G24
+                "HHS_HCC018",
+                "HHS_HCC183",
+                "G24",
             ]
         )
 

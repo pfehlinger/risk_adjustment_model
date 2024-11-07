@@ -178,10 +178,11 @@ class CommercialModel(BaseModel):
             if diagnosis_codes:
                 dx_categories = self._get_dx_categories(diagnosis_codes, beneficiary)
                 mapper_categories.extend(dx_categories)
-            if ndc_codes:
+            # Only Adults get RXCs
+            if ndc_codes and beneficiary.risk_model_age_group == "Adult":
                 ndc_categories = self._get_ndc_categories(ndc_codes)
                 mapper_categories.extend(ndc_categories)
-            if proc_codes:
+            if proc_codes and beneficiary.risk_model_age_group == "Adult":
                 proc_categories = self._get_proc_categories(proc_codes)
                 mapper_categories.extend(proc_categories)
 
@@ -254,9 +255,14 @@ class CommercialModel(BaseModel):
             categories, dropped_hierarchy_categories = self._apply_hierarchies(
                 categories
             )
-            categories = self._determine_interactions(categories, beneficiary)
             categories, dropped_group_categories = self._apply_groups(
                 categories, beneficiary
+            )
+            # Count is based on categories and groups, so interactions occur after
+            # groups, however some interactions are based on categories dropped by
+            # groups, so the dropped categories are also passed in
+            categories = self._determine_interactions(
+                categories, beneficiary, dropped_group_categories
             )
 
             # Add the dropped categories to their own list to return in results
@@ -729,7 +735,10 @@ class CommercialModel(BaseModel):
         return demographic_category
 
     def _determine_interactions(
-        self, categories: List[Type[Category]], beneficiary: Type[CommercialBeneficiary]
+        self,
+        categories: List[Type[Category]],
+        beneficiary: Type[CommercialBeneficiary],
+        dropped_group_categories: List[Type[Category]],
     ) -> List[Type[Category]]:
         """
         Determines disease interactions based on provided Category objects and beneficiary information.
