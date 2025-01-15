@@ -32,8 +32,8 @@ class CommercialModelV07(CommercialModel):
             "description": "April 10, 2024: Final 2023 Benefit Year Risk Adjustment HHS-Developed Risk Adjustment Model Algorithm 'Do It Yourself (DIY)' Software",
         },
         2024: {
-            "version": "1.0",
-            "description": "July 17, 2024: 2024 Benefit Year Risk Adjustment Updated HHS-Developed Risk Adjustment Model Algorithm 'Do It Yourself (DIY)' Software",
+            "version": "2.0",
+            "description": "January 7, 2025: 2024 Benefit Year Risk Adjustment Updated HHS-Developed Risk Adjustment Model Algorithm 'Do It Yourself (DIY)' Software",
         },
         2025: {
             "version": "0.0",
