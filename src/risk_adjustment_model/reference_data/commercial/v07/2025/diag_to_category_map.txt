@@ -1,4 +1,3 @@
-dx_code	category	unknown
 A0101	3
 A0102	135
 A0104	55
