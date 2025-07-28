@@ -5,9 +5,9 @@ from .category import Category
 from .beneficiary import CommercialBeneficiary
 
 
-class CommercialModelV07(CommercialModel):
+class CommercialModelV08(CommercialModel):
     """
-    This class represents the V07 Model for Commercial. It inherits from the CommercialModel class.
+    This class represents the V08 Model for Commercial. It inherits from the CommercialModel class.
 
     Methods:
         __init__: Initializes the CommercialModelV07 instance.
@@ -27,18 +27,14 @@ class CommercialModelV07(CommercialModel):
     """
 
     reference_files_version_dict = {
-        2023: {
-            "version": "3.0",
-            "description": "April 10, 2024: Final 2023 Benefit Year Risk Adjustment HHS-Developed Risk Adjustment Model Algorithm 'Do It Yourself (DIY)' Software",
-        },
-        2024: {
-            "version": "2.0",
-            "description": "January 7, 2025: 2024 Benefit Year Risk Adjustment Updated HHS-Developed Risk Adjustment Model Algorithm 'Do It Yourself (DIY)' Software",
+        2025: {
+            "version": "1.0",
+            "description": "July 23, 2025: 2025 Benefit Year Risk Adjustment Updated HHS-Developed Risk Adjustment Model Algorithm 'Do It Yourself (DIY)' Software",
         },
     }
 
     def __init__(self, year: Union[int, None] = None):
-        super().__init__("v07", year)
+        super().__init__("v08", year)
 
     def _age_sex_edits(
         self, gender: str, age: int, diagnosis_code: str
@@ -46,7 +42,7 @@ class CommercialModelV07(CommercialModel):
         """
         Wrapper method to apply all model specific age and sex edits for a diagnosis code to
         category mapping. These are found in the model software file named something like
-        "V24I0ED1".
+        "I0V08ED1".
 
         Args:
             gender (str): Gender of the individual ('M' for male, 'F' for female).
@@ -348,9 +344,24 @@ class CommercialModelV07(CommercialModel):
             "F4481",
             "F481",
             "F5000",
-            "F5001",
-            "F5002",
-            "F502",
+            "F50010",
+            "F50011",
+            "F50012",
+            "F50013",
+            "F50014",
+            "F50019",
+            "F50020",
+            "F50021",
+            "F50022",
+            "F50023",
+            "F50024",
+            "F50029",
+            "F5020",
+            "F5021",
+            "F5022",
+            "F5023",
+            "F5024",
+            "F5025",
             "F600",
             "F601",
             "F602",
@@ -484,6 +495,7 @@ class CommercialModelV07(CommercialModel):
             "T457X2A",
             "T458X2A",
             "T4592XA",
+            "T45AX2A",
             "T460X2A",
             "T461X2A",
             "T462X2A",
@@ -1054,6 +1066,8 @@ class CommercialModelV07(CommercialModel):
             "E74810",
             "E74818",
             "E74819",
+            "E74820",
+            "E74829",
             "E7489",
             "E749",
             "E771",
@@ -1476,6 +1490,7 @@ class CommercialModelV07(CommercialModel):
             "HHS_HCC061",
             "HHS_HCC063",
             "HHS_HCC066",
+            "HHS_HCC070",
             "HHS_HCC074",
             "HHS_HCC075",
             "HHS_HCC081",
@@ -1520,7 +1535,7 @@ class CommercialModelV07(CommercialModel):
             "HHS_HCC057",
             "HHS_HCC062",
             "HHS_HCC069",
-            "HHS_HCC070",
+            "HHS_HCC071",
             "HHS_HCC097",
             "HHS_HCC120",
             "HHS_HCC151",
@@ -1536,7 +1551,6 @@ class CommercialModelV07(CommercialModel):
         severity_1_hccs = [
             "HHS_HCC037_1",
             "HHS_HCC037_2",
-            "HHS_HCC071",
             "HHS_HCC102",
             "HHS_HCC103",
             "HHS_HCC118",
