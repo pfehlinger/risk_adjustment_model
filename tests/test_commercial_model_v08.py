@@ -559,6 +559,21 @@ def test_interactions():
     assert "HHS_HCC187" not in results.category_list
     assert "RXC_04_x_HCC184_183_187_188" in results.category_list
 
+    # "RXC_02_x_HCC037_1_036_035_2_035_1_034"
+    results = model.score(
+        gender="M",
+        metal_level="Silver",
+        csr_indicator=1,
+        enrollment_days=365,
+        diagnosis_codes=["B182"],
+        ndc_codes=["00074262528"],
+        age=54,
+        verbose=False,
+    )
+    assert "RXC_02" in results.category_list
+    assert "HHS_HCC037_1" in results.category_list
+    assert "RXC_02_x_HCC037_1_036_035_2_035_1_034" in results.category_list
+
 
 def test_dropped_categories():
     model = CommercialModelV08(year=2025)

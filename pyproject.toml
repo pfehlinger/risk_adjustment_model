@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "risk_adjustment_model"
-version = "0.5.0"
+version = "0.5.1"
 authors = ["Phil Fehlinger <pjfehlinger@gmail.com>"]
 description = "Python implementation of healthcare risk adjustment models"
 readme = "README.md"
