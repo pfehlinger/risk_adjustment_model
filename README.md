@@ -21,14 +21,14 @@ There a couple of key design decisions to call out:
 
 ## Installing
 
-Eventually, this package can be installed directly from pip
+You can install this package directly from PyPi using `pip`:
 
 ```
 pip install risk_adjustment_model
 ```
 
-As for now, it should be installed by cloning down the repository, running poetry build on it
-and then pip installing locally into an virtual environment
+Or, you can install it manually by cloning down the repository, running `poetry build` on it
+and then pip installing locally into a virtual environment.
 
 
 ## File Structure
