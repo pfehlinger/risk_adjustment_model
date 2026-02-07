@@ -623,7 +623,10 @@ def test_dropped_categories():
 
 def test_reference_files_version():
     model = CommercialModelV08(year=2025)
-    assert "1.0" == model.reference_files_version
+    assert "2.0" == model.reference_files_version
+
+    model = CommercialModelV08(year=2026)
+    assert "0.0" == model.reference_files_version
 
 
 def test_age_group_categories():
@@ -652,3 +655,19 @@ def test_age_group_categories():
         verbose=False,
     )
     assert "RXC_04" not in results.category_list
+
+
+def test_year_2026_of_model():
+    # Simple test to confirm 2026 is working as expected
+    model = CommercialModelV08(year=2026)
+
+    results = model.score(
+        gender="M",
+        metal_level="Silver",
+        csr_indicator=1,
+        enrollment_days=365,
+        diagnosis_codes=["A064"],
+        age=35,
+        verbose=False,
+    )
+    assert "HHS_HCC035_1" in results.category_list

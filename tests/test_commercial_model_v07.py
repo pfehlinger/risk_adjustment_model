@@ -613,7 +613,7 @@ def test_reference_files_version():
     assert "3.0" == model.reference_files_version
 
     model = CommercialModelV07(year=2024)
-    assert "2.0" == model.reference_files_version
+    assert "3.0" == model.reference_files_version
 
 
 def test_age_group_categories():
