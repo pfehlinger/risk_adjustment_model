@@ -31,6 +31,10 @@ class CommercialModelV08(CommercialModel):
             "version": "2.0",
             "description": "January 23, 2025: 2025 Benefit Year Risk Adjustment Updated HHS-Developed Risk Adjustment Model Algorithm 'Do It Yourself (DIY)' Software",
         },
+        2026: {
+            "version": "0.0",
+            "description": "Using Benefit Year 2025 mappings; coefficent come from 2026-benefit-year-final-hhs-risk-adjustment-model-coefficients2025-01-13.pdf",
+        },
     }
 
     def __init__(self, year: Union[int, None] = None):
