@@ -623,7 +623,7 @@ def test_dropped_categories():
 
 def test_reference_files_version():
     model = CommercialModelV08(year=2025)
-    assert "2.0" == model.reference_files_version
+    assert "3.0" == model.reference_files_version
 
     model = CommercialModelV08(year=2026)
     assert "0.0" == model.reference_files_version

@@ -28,8 +28,8 @@ class CommercialModelV08(CommercialModel):
 
     reference_files_version_dict = {
         2025: {
-            "version": "2.0",
-            "description": "January 23, 2025: 2025 Benefit Year Risk Adjustment Updated HHS-Developed Risk Adjustment Model Algorithm 'Do It Yourself (DIY)' Software",
+            "version": "3.0",
+            "description": "March 30, 2026: 2025 Benefit Year Risk Adjustment Updated HHS-Developed Risk Adjustment Model Algorithm 'Do It Yourself (DIY)' Software",
         },
         2026: {
             "version": "0.0",
