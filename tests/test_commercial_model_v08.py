@@ -49,6 +49,28 @@ def test_category_mapping():
     )
     assert "HHS_HCC142" in results.category_list
 
+    results = model.score(
+        gender="M",
+        metal_level="Silver",
+        csr_indicator=1,
+        enrollment_days=365,
+        diagnosis_codes=["E8843"],
+        age=35,
+        verbose=False,
+    )
+    assert "HHS_HCC028" not in results.category_list
+
+    results = model.score(
+        gender="M",
+        metal_level="Silver",
+        csr_indicator=1,
+        enrollment_days=365,
+        diagnosis_codes=["E8843"],
+        age=18,
+        verbose=False,
+    )
+    assert "G02D" in results.category_list
+
 
 def test_category_groups():
     model = CommercialModelV08(year=2025)

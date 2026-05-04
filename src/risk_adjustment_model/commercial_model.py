@@ -186,14 +186,32 @@ class CommercialModel(BaseModel):
                 proc_categories = self._get_proc_categories(proc_codes)
                 mapper_categories.extend(proc_categories)
 
-            # Some diagnosis codes go to more than one category thus the category is a list
-            # and it is a two step process to unpack them
-            unique_disease_cats = set(
-                category
-                for mapper_code in mapper_categories
-                for category in mapper_code.categories
-                if category is not None and category != "NA"
-            )
+            # For Adult and Child models some categories are not relevant so need to filter
+            if beneficiary.risk_model_age_group in ["Adult", "Child"]:
+                valid_weighted_categories = set(
+                    self.model_group_reference_files.category_weights.keys()
+                )
+
+                # Some diagnosis codes go to more than one category thus the category is a list
+                # and it is a two step process to unpack them
+                unique_disease_cats = {
+                    category
+                    for mapper_code in mapper_categories
+                    for category in mapper_code.categories
+                    if (
+                        category is not None
+                        and category != "NA"
+                        and category in valid_weighted_categories
+                    )
+                }
+
+            else:
+                unique_disease_cats = set(
+                    category
+                    for mapper_code in mapper_categories
+                    for category in mapper_code.categories
+                    if category is not None and category != "NA"
+                )
 
             for category in unique_disease_cats:
                 # This is done to obtain a consistent output for diagnosis map
