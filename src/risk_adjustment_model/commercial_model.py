@@ -273,6 +273,14 @@ class CommercialModel(BaseModel):
             categories, dropped_hierarchy_categories = self._apply_hierarchies(
                 categories
             )
+            # ACF is computed against post-hierarchy HCC/RXC state but before groups are
+            # formed, matching CMS's own pipeline ordering. Raw ndc_codes/proc_codes are
+            # passed directly (rather than resolved RXC categories) since ACF_PrEP_Child
+            # needs drug/procedure codes for the Child population, which the RXC-category
+            # pipeline above deliberately excludes.
+            categories = self._determine_acf(
+                categories, ndc_codes, proc_codes, beneficiary
+            )
             categories, dropped_group_categories = self._apply_groups(
                 categories, beneficiary
             )
@@ -714,10 +722,23 @@ class CommercialModel(BaseModel):
                 "10": 1.46,
                 "11": 1.15,
             },
+            2026: {
+                "1": 1.00,
+                "2": 1.07,
+                "3": 1.12,
+                "4": 1.51,
+                "5": 1.19,
+                "6": 1.31,
+                "7": 1.04,
+                "8": 1.39,
+                "9": 1.10,
+                "10": 1.46,
+                "11": 1.15,
+            },
         }
 
         if csr_adjuster_dict.get(year):
-            csr_adjuster = csr_adjuster_dict[year].get(csr_indicator, 1.00)
+            csr_adjuster = csr_adjuster_dict[year].get(str(csr_indicator), 1.00)
         else:
             csr_adjuster = 1.00
 
@@ -796,6 +817,29 @@ class CommercialModel(BaseModel):
         interactions.append(categories)
 
         return interactions
+
+    def _determine_acf(
+        self,
+        categories: List[Type[Category]],
+        ndc_codes: Union[List[str], None],
+        proc_codes: Union[List[str], None],
+        beneficiary: Type[CommercialBeneficiary],
+    ) -> List[Type[Category]]:
+        """
+        Determines Affiliated Cost Factor (ACF) categories, a model-version-specific
+        scoring component (introduced in V08 starting with the 2026 benefit year).
+        Placeholder to be overwritten by child classes; default is a no-op.
+
+        Args:
+            categories (List[Type[Category]]): List of Category objects, post-hierarchy.
+            ndc_codes (list, optional): Raw NDC codes associated with the beneficiary.
+            proc_codes (list, optional): Raw procedure/HCPCS codes associated with the beneficiary.
+            beneficiary (Type[CommercialBeneficiary]): Instance of CommercialBeneficiary.
+
+        Returns:
+            List[Type[Category]]: List of Category objects, unchanged by default.
+        """
+        return categories
 
     def _age_sex_edits(
         self, gender: str, age: int, diagnosis_code: str

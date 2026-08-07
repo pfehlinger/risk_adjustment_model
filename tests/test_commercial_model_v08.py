@@ -648,7 +648,33 @@ def test_reference_files_version():
     assert "3.0" == model.reference_files_version
 
     model = CommercialModelV08(year=2026)
-    assert "0.0" == model.reference_files_version
+    assert "1.0" == model.reference_files_version
+
+
+def test_csr_adjuster():
+    model = CommercialModelV08(year=2026)
+
+    results = model.score(
+        gender="M",
+        metal_level="Silver",
+        csr_indicator=4,
+        enrollment_days=365,
+        diagnosis_codes=["A064"],
+        age=35,
+        verbose=False,
+    )
+    assert results.csr_adjuster == 1.51
+
+    results = model.score(
+        gender="M",
+        metal_level="Silver",
+        csr_indicator=1,
+        enrollment_days=365,
+        diagnosis_codes=["A064"],
+        age=35,
+        verbose=False,
+    )
+    assert results.csr_adjuster == 1.00
 
 
 def test_age_group_categories():
@@ -693,3 +719,98 @@ def test_year_2026_of_model():
         verbose=False,
     )
     assert "HHS_HCC035_1" in results.category_list
+
+
+def test_acf_categories():
+    # New for BY2026: Affiliated Cost Factors (ACF). NDC/HCPCS codes below are real
+    # entries from the CMS BY2026 acf_NDC_mappings.csv / acf_HCPCS_mappings.csv.
+    model = CommercialModelV08(year=2026)
+
+    # Adult PrEP NDC, age > 20 -> triggers ACF_PrEP
+    results = model.score(
+        gender="M",
+        metal_level="Silver",
+        csr_indicator=1,
+        enrollment_days=365,
+        ndc_codes=["49702023803"],
+        age=35,
+        verbose=False,
+    )
+    assert "ACF_PrEP" in results.category_list
+
+    # Adult PrEP NDC, age <= 20 -> "Age > 20" condition fails, no ACF_PrEP
+    results = model.score(
+        gender="M",
+        metal_level="Silver",
+        csr_indicator=1,
+        enrollment_days=365,
+        ndc_codes=["49702023803"],
+        age=20,
+        verbose=False,
+    )
+    assert "ACF_PrEP" not in results.category_list
+
+    # Adult PrEP NDC + a second NDC that already maps to RXC_01 -> exclude_rxc suppresses it
+    results = model.score(
+        gender="M",
+        metal_level="Silver",
+        csr_indicator=1,
+        enrollment_days=365,
+        ndc_codes=["49702023803", "00003196401"],
+        age=35,
+        verbose=False,
+    )
+    assert "RXC_01" in results.category_list
+    assert "ACF_PrEP" not in results.category_list
+
+    # Child PrEP HCPCS, age between 11 and 21 -> triggers ACF_PrEP_Child
+    results = model.score(
+        gender="M",
+        metal_level="Silver",
+        csr_indicator=1,
+        enrollment_days=365,
+        proc_codes=["J0739"],
+        age=15,
+        verbose=False,
+    )
+    assert "ACF_PrEP_Child" in results.category_list
+
+    # Child PrEP HCPCS + a diagnosis mapping to HHS_HCC001 -> exclude_hcc suppresses it
+    results = model.score(
+        gender="M",
+        metal_level="Silver",
+        csr_indicator=1,
+        enrollment_days=365,
+        proc_codes=["J0739"],
+        diagnosis_codes=["B20"],
+        age=15,
+        verbose=False,
+    )
+    assert "HHS_HCC001" in results.category_list
+    assert "ACF_PrEP_Child" not in results.category_list
+
+    # Infants never get ACF regardless of codes present
+    results = model.score(
+        gender="M",
+        metal_level="Silver",
+        csr_indicator=1,
+        enrollment_days=365,
+        ndc_codes=["49702023803"],
+        age=1,
+        verbose=False,
+    )
+    assert "ACF_PrEP" not in results.category_list
+    assert "ACF_PrEP_Child" not in results.category_list
+
+    # 2025 has no ACF reference data at all -- must remain a no-op, not an error
+    model_2025 = CommercialModelV08(year=2025)
+    results = model_2025.score(
+        gender="M",
+        metal_level="Silver",
+        csr_indicator=1,
+        enrollment_days=365,
+        ndc_codes=["49702023803"],
+        age=35,
+        verbose=False,
+    )
+    assert "ACF_PrEP" not in results.category_list

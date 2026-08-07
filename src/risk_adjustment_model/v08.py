@@ -1,3 +1,4 @@
+import re
 from typing import List, Union, Type
 from .utilities import determine_age_band
 from .commercial_model import CommercialModel
@@ -32,8 +33,8 @@ class CommercialModelV08(CommercialModel):
             "description": "March 30, 2026: 2025 Benefit Year Risk Adjustment Updated HHS-Developed Risk Adjustment Model Algorithm 'Do It Yourself (DIY)' Software",
         },
         2026: {
-            "version": "0.0",
-            "description": "Using Benefit Year 2025 mappings; coefficent come from 2026-benefit-year-final-hhs-risk-adjustment-model-coefficients2025-01-13.pdf",
+            "version": "1.0",
+            "description": "July 31, 2026: 2026 Benefit Year HHS-Developed Risk Adjustment Model Algorithm 'Do It Yourself (DIY)' Software (Version 08 HHS-HCC Python Software Package V0826.141.E1)",
         },
     }
 
@@ -261,6 +262,9 @@ class CommercialModelV08(CommercialModel):
             "C50921",
             "C50922",
             "C50929",
+            "C50A0",
+            "C50A1",
+            "C50A2",
         ]:
             return ["HHS_HCC011"]
 
@@ -1861,3 +1865,86 @@ class CommercialModelV08(CommercialModel):
             demographic_category = f"{gender}AGE_LAST_{demographic_category_range}"
 
         return demographic_category
+
+    _ACF_AGE_GT_RE = re.compile(r"^Age\s*>\s*(\d+)$")
+    _ACF_AGE_RANGE_RE = re.compile(r"^(\d+)\s*<\s*Age\s*<\s*(\d+)$")
+
+    def _acf_age_condition_met(self, condition: str, age: int) -> bool:
+        """
+        Evaluates an ACF_Age condition string from acf_definition.json, e.g. "Age > 20"
+        or "11 < Age < 21". This is a small, fixed grammar (confirmed against the CMS
+        BY2026 DIY source) parsed explicitly rather than with eval().
+        """
+        if not condition:
+            return True
+        match = self._ACF_AGE_GT_RE.match(condition)
+        if match:
+            return age > int(match.group(1))
+        match = self._ACF_AGE_RANGE_RE.match(condition)
+        if match:
+            return int(match.group(1)) < age < int(match.group(2))
+        raise ValueError(f"Unrecognized ACF age condition: {condition!r}")
+
+    def _determine_acf(
+        self,
+        categories: List[Type[Category]],
+        ndc_codes: Union[List[str], None],
+        proc_codes: Union[List[str], None],
+        beneficiary: Type[CommercialBeneficiary],
+    ) -> List[Type[Category]]:
+        """
+        Determines Affiliated Cost Factor (ACF) categories, new for the 2026 benefit year.
+        A code (NDC or HCPCS) triggers an ACF category (ACF_PrEP for Adult, ACF_PrEP_Child
+        for Child) only if the beneficiary's age satisfies the entry's age condition, and
+        the beneficiary does not already have the entry's excluded RXC or HCC category
+        (this avoids double-counting drug cost already captured elsewhere).
+
+        Args:
+            categories (List[Type[Category]]): List of Category objects, post-hierarchy.
+            ndc_codes (list, optional): Raw NDC codes associated with the beneficiary.
+            proc_codes (list, optional): Raw procedure/HCPCS codes associated with the beneficiary.
+            beneficiary (Type[CommercialBeneficiary]): Instance of CommercialBeneficiary.
+
+        Returns:
+            List[Type[Category]]: List of Category objects, with an ACF category appended
+                if triggered.
+        """
+        if beneficiary.risk_model_age_group not in ("Adult", "Child"):
+            return categories
+
+        acf_definitions = self.reference_files.acf_definitions
+        if not acf_definitions:
+            return categories
+
+        target_acf_category = (
+            "ACF_PrEP" if beneficiary.risk_model_age_group == "Adult" else "ACF_PrEP_Child"
+        )
+        existing_categories = {category.category for category in categories}
+
+        triggering_codes = []
+        for code in list(ndc_codes or []) + list(proc_codes or []):
+            for entry in acf_definitions.get(code, []):
+                if entry["acf_category"] != target_acf_category:
+                    continue
+                if not self._acf_age_condition_met(
+                    entry["age_condition"], beneficiary.age
+                ):
+                    continue
+                if entry["exclude_rxc"] and entry["exclude_rxc"] in existing_categories:
+                    continue
+                if entry["exclude_hcc"] and entry["exclude_hcc"] in existing_categories:
+                    continue
+                triggering_codes.append(code)
+
+        if not triggering_codes:
+            return categories
+
+        acf_category = Category(
+            self.model_group_reference_files,
+            beneficiary.risk_model_population,
+            target_acf_category,
+            triggering_codes,
+        )
+        categories.append(acf_category)
+
+        return categories

@@ -40,8 +40,7 @@ class ReferenceFilesLoader:
         self.category_map = self._get_category_mapping(lob)
         if lob == "commercial":
             self.group_definitions = self._get_group_definitions()
-            # self.ndc_map = self._get_ndc_code_to_category_mapping()
-            # self.proc_map = self._get_proc_code_to_category_mapping()
+            self.acf_definitions = self._get_acf_definitions()
 
     def _get_hierarchy_definitions(self) -> dict:
         """
@@ -67,6 +66,25 @@ class ReferenceFilesLoader:
             group_definitions = json.load(file)
 
         return group_definitions
+
+    def _get_acf_definitions(self) -> dict:
+        """
+        Retrieve Affiliated Cost Factor (ACF) definitions from a JSON file, if present for
+        this model year. This is applicable to Commercial only, and was introduced starting
+        with the 2026 benefit year, so older model years won't have this file.
+
+        Returns:
+            dict: A dictionary mapping NDC/HCPCS codes to a list of ACF condition entries,
+                or an empty dict if this model year has no ACF definitions.
+        """
+        filepath = self.data_directory / "acf_definition.json"
+        if not filepath.exists():
+            return {}
+
+        with open(filepath) as file:
+            acf_definitions = json.load(file)
+
+        return acf_definitions
 
     def _get_category_definitions(self) -> dict:
         """
