@@ -1,4 +1,3 @@
-import re
 from typing import List, Union, Type
 from .utilities import determine_age_band
 from .commercial_model import CommercialModel
@@ -1866,25 +1865,6 @@ class CommercialModelV08(CommercialModel):
 
         return demographic_category
 
-    _ACF_AGE_GT_RE = re.compile(r"^Age\s*>\s*(\d+)$")
-    _ACF_AGE_RANGE_RE = re.compile(r"^(\d+)\s*<\s*Age\s*<\s*(\d+)$")
-
-    def _acf_age_condition_met(self, condition: str, age: int) -> bool:
-        """
-        Evaluates an ACF_Age condition string from acf_definition.json, e.g. "Age > 20"
-        or "11 < Age < 21". This is a small, fixed grammar (confirmed against the CMS
-        BY2026 DIY source) parsed explicitly rather than with eval().
-        """
-        if not condition:
-            return True
-        match = self._ACF_AGE_GT_RE.match(condition)
-        if match:
-            return age > int(match.group(1))
-        match = self._ACF_AGE_RANGE_RE.match(condition)
-        if match:
-            return int(match.group(1)) < age < int(match.group(2))
-        raise ValueError(f"Unrecognized ACF age condition: {condition!r}")
-
     def _determine_acf(
         self,
         categories: List[Type[Category]],
@@ -1895,9 +1875,18 @@ class CommercialModelV08(CommercialModel):
         """
         Determines Affiliated Cost Factor (ACF) categories, new for the 2026 benefit year.
         A code (NDC or HCPCS) triggers an ACF category (ACF_PrEP for Adult, ACF_PrEP_Child
-        for Child) only if the beneficiary's age satisfies the entry's age condition, and
-        the beneficiary does not already have the entry's excluded RXC or HCC category
-        (this avoids double-counting drug cost already captured elsewhere).
+        for Child) only if the beneficiary does not already have the excluded RXC or HCC
+        category (this avoids double-counting drug cost already captured elsewhere).
+
+        Per CMS's BY2026 acf_NDC_mappings.csv/acf_HCPCS_mappings.csv, the age condition and
+        excluded category are constant per ACF category (verified across every row, no
+        exceptions), so -- consistent with how every other age/sex rule in this class is
+        hardcoded (see the sixteen `_age_sex_edit_N` methods) -- they're hardcoded here
+        rather than read from the reference file. ACF_PrEP's "Age > 20" condition is also
+        redundant by construction: it's only ever checked when risk_model_age_group is
+        already "Adult" (age >= 21 per CommercialBeneficiary._determine_age_group), so it's
+        omitted. ACF_PrEP_Child's "11 < Age < 21" condition does real filtering (Child spans
+        ages 2-20) and is checked explicitly.
 
         Args:
             categories (List[Type[Category]]): List of Category objects, post-hierarchy.
@@ -1909,33 +1898,30 @@ class CommercialModelV08(CommercialModel):
             List[Type[Category]]: List of Category objects, with an ACF category appended
                 if triggered.
         """
-        if beneficiary.risk_model_age_group not in ("Adult", "Child"):
+        acf_map = self.reference_files.category_map.get("acf", {})
+        if not acf_map:
             return categories
 
-        acf_definitions = self.reference_files.acf_definitions
-        if not acf_definitions:
+        if beneficiary.risk_model_age_group == "Adult":
+            target_acf_category = "ACF_PrEP"
+            excluded_category = "RXC_01"
+        elif beneficiary.risk_model_age_group == "Child":
+            if not (11 < beneficiary.age < 21):
+                return categories
+            target_acf_category = "ACF_PrEP_Child"
+            excluded_category = "HHS_HCC001"
+        else:
             return categories
 
-        target_acf_category = (
-            "ACF_PrEP" if beneficiary.risk_model_age_group == "Adult" else "ACF_PrEP_Child"
-        )
         existing_categories = {category.category for category in categories}
+        if excluded_category in existing_categories:
+            return categories
 
-        triggering_codes = []
-        for code in list(ndc_codes or []) + list(proc_codes or []):
-            for entry in acf_definitions.get(code, []):
-                if entry["acf_category"] != target_acf_category:
-                    continue
-                if not self._acf_age_condition_met(
-                    entry["age_condition"], beneficiary.age
-                ):
-                    continue
-                if entry["exclude_rxc"] and entry["exclude_rxc"] in existing_categories:
-                    continue
-                if entry["exclude_hcc"] and entry["exclude_hcc"] in existing_categories:
-                    continue
-                triggering_codes.append(code)
-
+        triggering_codes = [
+            code
+            for code in list(ndc_codes or []) + list(proc_codes or [])
+            if target_acf_category in acf_map.get(code, [])
+        ]
         if not triggering_codes:
             return categories
 
