@@ -46,6 +46,15 @@ class CommercialModel(BaseModel):
             _age_sex_edits
         Helper methods to not override, e.g.: _apply_csr_adj
 
+    Diagnosis codes passed to `score` are assumed to already be valid/plausible for the
+    beneficiary (acceptable claim source and bill type, and CMS's Medicare Code Editor-style
+    age/sex plausibility edits, i.e. MCE conditions in CMS's ICD-10-to-category crosswalk).
+    That's claims-editing data-quality logic, not risk-adjustment scoring logic, so it is
+    intentionally not implemented here -- `_get_dx_categories`/`_age_sex_edits` apply CMS's
+    category-selection edits (which CC/HCC a code maps to under a given age/sex), but do not
+    reject a code outright based on age/sex plausibility the way MCE conditions do. See the
+    README for more detail.
+
     For reference files, CMS historically releases 3 versions of the DIY software: July/August of Benefit Year (BY),
     December of Benefit Year or January of the following year (e.g. Dec 2024 or Jan 2025), then a final version at the
     close of the benefit year April BY+1 (so for BY2024 April 2025). Prior to the BY, CMS publishes the coefficient

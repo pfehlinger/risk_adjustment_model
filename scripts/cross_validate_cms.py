@@ -15,11 +15,16 @@ is year-specific -- you can't ask it to score a different year without pointing
 CMS_PACKAGE_DIR at a different package).
 
 Diagnosis codes are restricted to those with no MCE/age/sex condition in CMS's source ICD10
-crosswalk. This repo has no equivalent of CMS's MCE age-at-diagnosis edit, and picking only
-condition-free codes sidesteps that gap entirely so this script is a clean test of the score
-*pipeline* (hierarchies, groups, interactions, ACF, CSR adjustment) rather than of the
-age/sex-edit reconciliation that scripts/build_v08_reference_data.py's diag-map comparison
-and manual review already cover separately.
+crosswalk, for two different reasons:
+- AGE_EDIT_CONDITION/SEX_EDIT_CONDITION codes ARE implemented (via the `_age_sex_edit_N`
+  methods in v08.py), but are excluded here to keep this script focused on the score
+  *pipeline* (hierarchies, groups, interactions, ACF, CSR adjustment) -- the edit-method
+  reconciliation itself already has dedicated coverage via
+  scripts/build_v08_reference_data.py's diag-map comparison and test_age_sex_edits.
+- MCE_AGE_CONDITION codes are excluded because this repo intentionally does not implement
+  CMS's MCE claims-editing plausibility checks at all (see README.md's "key design decisions"
+  and CommercialModel's class docstring) -- CMS would reject some enrollee/code combinations
+  this repo would accept, which would produce mismatches unrelated to what this script tests.
 """
 
 import argparse
