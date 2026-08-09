@@ -27,9 +27,10 @@ Usage:
         --version v28 --prior-year 2024 --target-year 2026 \\
         --cms-package-dir /path/to/extracted/CMS_HCC_v28_2026_T_package_v3/software/CMS_HCC_v28
 
-Only V28 is supported today; V22 needs its own category/hierarchy verification pass (different
-crosswalk columns -- RTI_AGE_CONDITION/RTI_SEX -- and its own disease/interaction classification)
-before this script can be safely pointed at it.
+Supports V22 and V28 -- both ship the same clean-CSV crosswalk/coefficient shape from CMS. V22 has
+no prior-year reference data of its own to diff against for its first supported year (2026); that
+initial build was done by scripts/build_medicare_v22_reference_data.py (a one-off "cold start"
+script, see its docstring), after which this script works for V22 like any other version/year.
 """
 
 import argparse
@@ -396,7 +397,10 @@ def build_diag_map(cfg: Config, model_class):
 def parse_args() -> Config:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
-        "--version", required=True, choices=["v28"], help="Medicare model version."
+        "--version",
+        required=True,
+        choices=["v22", "v28"],
+        help="Medicare model version.",
     )
     parser.add_argument("--prior-year", type=int, required=True)
     parser.add_argument("--target-year", type=int, required=True)
@@ -430,9 +434,9 @@ def parse_args() -> Config:
 def main():
     cfg = parse_args()
     sys.path.insert(0, str(REPO_ROOT / "src"))
-    from risk_adjustment_model import MedicareModelV28
+    from risk_adjustment_model import MedicareModelV22, MedicareModelV28
 
-    model_class = {"v28": MedicareModelV28}[cfg.version]
+    model_class = {"v22": MedicareModelV22, "v28": MedicareModelV28}[cfg.version]
 
     print("Verifying hierarchy / category definitions...")
     verify_and_carry_forward_definitions(cfg)

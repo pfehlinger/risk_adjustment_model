@@ -6,6 +6,7 @@ The Medicare SAS implementations can be found on [CMS's website](https://www.cms
 
 Currently, risk_adjustment_model supports the below model versions:
 * Medicare (CMS-HCC)
+  * V22
   * V24
   * V28
 * Commercial/ACA (HHS-HCC)
@@ -54,7 +55,7 @@ and then pip installing locally into an virtual environment
                                  the reference_data folder structure. This is necessary for performance purposes.
   - `result.py`: class to encapsulate the output of a scoring run.
   - `utilities.py`: Contains generic functions that are used throughout codebase.
-  - `v24.py`, `v28.py`: Medicare model version classes (`MedicareModelV24`, `MedicareModelV28`).
+  - `v22.py`, `v24.py`, `v28.py`: Medicare model version classes (`MedicareModelV22`, `MedicareModelV24`, `MedicareModelV28`).
   - `v07.py`, `v08.py`: Commercial/ACA model version classes (`CommercialModelV07`, `CommercialModelV08`).
 - `scripts/`: Developer/maintainer tooling, not part of the published package.
   - `build_v08_reference_data.py`: Regenerates Commercial/ACA reference data for a benefit year from a CMS DIY software package.
