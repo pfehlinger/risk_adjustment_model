@@ -413,3 +413,28 @@ def test_raw_score():
         population="CND",
     )
     assert isclose(results.score_raw, 1.434)
+
+
+def test_year_2025_of_model():
+    # Golden value independently cross-checked by hand against CMS's PY2025 source coefficients
+    # (C2419P1M.csv) and ICD10 crosswalk (F2425P1M.TXT) -- no Python transform.py exists for this
+    # legacy SAS-based package to run for an automated cross-validation.
+    model = MedicareModelV24(year=2025)
+    results = model.score(
+        gender="M",
+        orec="0",
+        medicaid=False,
+        diagnosis_codes=["E1169", "I5030", "I509", "I2111"],
+        age=70,
+        population="CNA",
+        verbose=False,
+    )
+    assert isclose(results.score_raw, 1.343)
+    assert set(results.category_list) == {
+        "DIABETES_CHF",
+        "D3",
+        "M70_74",
+        "HCC85",
+        "HCC86",
+        "HCC18",
+    }
