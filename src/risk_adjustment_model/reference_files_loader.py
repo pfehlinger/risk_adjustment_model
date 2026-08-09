@@ -33,12 +33,12 @@ class ReferenceFilesLoader:
         _get_acf_code_to_category_mapping: Retrieve ACF code to category mappings from a text file.
     """
 
-    def __init__(self, filepath, lob=None):
+    def __init__(self, filepath, lob=None, category_prefix="HCC"):
         self.data_directory = filepath
         self.hierarchy_definitions = self._get_hierarchy_definitions()
         self.category_definitions = self._get_category_definitions()
         self.category_weights = self._get_category_weights(lob)
-        self.category_map = self._get_category_mapping(lob)
+        self.category_map = self._get_category_mapping(lob, category_prefix)
         if lob == "commercial":
             self.group_definitions = self._get_group_definitions()
 
@@ -131,7 +131,7 @@ class ReferenceFilesLoader:
 
         return weights
 
-    def _get_category_mapping(self, lob) -> dict:
+    def _get_category_mapping(self, lob, category_prefix="HCC") -> dict:
         """
         Retrieve category weights from a CSV file.
 
@@ -153,7 +153,7 @@ class ReferenceFilesLoader:
 
                 if file_type == "diag":
                     category_map[file_type] = self._get_diag_code_to_category_mapping(
-                        lob
+                        lob, category_prefix
                     )
                 elif file_type == "ndc":
                     category_map[file_type] = self._get_ndc_code_to_category_mapping()
@@ -164,11 +164,17 @@ class ReferenceFilesLoader:
 
         return category_map
 
-    def _get_diag_code_to_category_mapping(self, lob) -> dict:
+    def _get_diag_code_to_category_mapping(self, lob, category_prefix="HCC") -> dict:
         """
         Retrieve diagnosis code to category mappings from a text file. It expects the file
         to be a text file in the layout of diag-category_nbr where they are separated by
         a tab character.
+
+        Args:
+            lob (str): Line of Business, "commercial" builds "HHS_HCC..." names regardless
+                       of category_prefix; any other LOB uses category_prefix.
+            category_prefix (str): Prefix prepended to the bare category number for non-Commercial
+                                    LOBs, e.g. "HCC" for CMS-HCC/ESRD, "RXHCC" for RxHCC.
 
         Returns:
             dict: A dictionary mapping diagnosis codes to categories.
@@ -187,7 +193,7 @@ class ReferenceFilesLoader:
                     else:
                         category = "HHS_HCC" + parts[1].strip().zfill(3)
                 else:
-                    category = "HCC" + parts[1].strip()
+                    category = category_prefix + parts[1].strip()
                 if diag not in diag_to_category_map:
                     diag_to_category_map[diag] = []
                 diag_to_category_map[diag].append(category)

@@ -19,7 +19,13 @@ class BaseModel:
         reference_files (ReferenceFilesLoader): Loader for reference files.
     """
 
-    def __init__(self, lob: str, version: str, year: Union[int, None] = None):
+    def __init__(
+        self,
+        lob: str,
+        version: str,
+        year: Union[int, None] = None,
+        category_prefix: str = "HCC",
+    ):
         """
         Initializes a BaseModel with the provided parameters.
 
@@ -27,13 +33,21 @@ class BaseModel:
             lob (str): Line of Business (LOB) for the model.
             version (str): Version of the model.
             year (int, optional): Year for which the model is implemented (default is None).
+            category_prefix (str): Prefix used to build disease category names from the bare
+                                    numbers in diag_to_category_map.txt (e.g. "HCC" -> "HCC85",
+                                    "RXHCC" -> "RXHCC85"). Only relevant for non-Commercial LOBs;
+                                    Commercial builds its own "HHS_HCC..." names regardless of
+                                    this value. Defaults to "HCC" for backwards compatibility.
         """
         self.lob = lob
         self.version = version
         self.year = year
+        self.category_prefix = category_prefix
         self.model_year = self._get_model_year()
         self.data_directory = self._get_data_directory()
-        self.reference_files = ReferenceFilesLoader(self.data_directory, lob)
+        self.reference_files = ReferenceFilesLoader(
+            self.data_directory, lob, category_prefix
+        )
 
     def _get_model_year(self) -> int:
         """
