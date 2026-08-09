@@ -44,10 +44,23 @@ class MedicareModel(BaseModel):
             _age_sex_edits
             _get_normalization_factor
         Helper methods to not override, e.g.: _apply_norm_factor_coding_adj
+
+    Class Attributes:
+        category_prefix (str): Prefix used to build disease category names from the bare
+                                numbers in diag_to_category_map.txt, e.g. "HCC" -> "HCC85".
+                                Override per model variant when the naming convention differs,
+                                e.g. RxHCC uses "RXHCC" instead of "HCC".
     """
 
+    category_prefix: str = "HCC"
+
     def __init__(self, version: str, year: Union[int, None] = None):
-        super().__init__(lob="medicare", version=version, year=year)
+        super().__init__(
+            lob="medicare",
+            version=version,
+            year=year,
+            category_prefix=self.category_prefix,
+        )
         self.coding_intensity_adjuster = self._get_coding_intensity_adjuster(
             self.model_year
         )

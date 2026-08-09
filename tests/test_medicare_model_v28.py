@@ -321,3 +321,28 @@ def test_raw_score():
         population="CND",
     )
     assert isclose(results.score_raw, 1.250)
+
+
+def test_year_2026_and_2027_of_model():
+    # Golden value cross-validated directly against CMS's own PY2026 transform.py
+    # (SCORE_COMMUNITY_NA = 1.286 for this exact beneficiary/diagnosis combination).
+    for year in (2026, 2027):
+        model = MedicareModelV28(year=year)
+        results = model.score(
+            gender="M",
+            orec="0",
+            medicaid=False,
+            diagnosis_codes=["E1169", "I5030", "I509", "I2111"],
+            age=70,
+            population="CNA",
+            verbose=False,
+        )
+        assert isclose(results.score_raw, 1.286)
+        assert set(results.category_list) == {
+            "HCC37",
+            "HCC226",
+            "HCC228",
+            "M70_74",
+            "D3",
+            "DIABETES_HF_V28",
+        }
