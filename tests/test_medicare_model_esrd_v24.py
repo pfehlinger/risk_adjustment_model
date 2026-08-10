@@ -267,8 +267,11 @@ def test_normalization_factor_is_population_group_dependent():
     )
     assert isclose(ne_graft.normalization_factor, 1.104)
 
-    # 2027 figures -- checked directly via _get_normalization_factor, since this repo doesn't
-    # have 2027 ESRD reference data built yet (a separate, tracked gap; see README) and so can't
-    # instantiate a 2027 model to score through.
-    assert isclose(model._get_normalization_factor(2027, "DIAL"), 1.072)
-    assert isclose(model._get_normalization_factor(2027, "GRAFT_COMM"), 1.119)
+    # 2027 figures.
+    model_2027 = MedicareModelESRDv24(year=2027)
+    dial_2027 = model_2027.score(gender="M", orec="0", age=50, population="DIAL")
+    assert isclose(dial_2027.normalization_factor, 1.072)
+    graft_2027 = model_2027.score(
+        gender="M", orec="0", age=50, population="GRAFT_COMM", graft_duration_months=6
+    )
+    assert isclose(graft_2027.normalization_factor, 1.119)

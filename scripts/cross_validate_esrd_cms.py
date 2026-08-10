@@ -65,13 +65,26 @@ def find_internal_file(cms_dir: Path, filename: str) -> Path:
 def read_unconditional_diag_codes(
     cms_dir: Path, version: str, year: int, exclude_ccs: set
 ) -> list:
-    filename = f"ICD10_CC_mappings_ESRD_{year}_{version}.csv"
+    # Some package vintages (e.g. 2027 "initial" packages) suffix this filename with "_initial".
+    base_name = f"ICD10_CC_mappings_ESRD_{year}_{version}"
+    for candidate in (f"{base_name}.csv", f"{base_name}_initial.csv"):
+        try:
+            path = find_internal_file(cms_dir, candidate)
+            break
+        except FileNotFoundError:
+            continue
+    else:
+        raise FileNotFoundError(
+            f"Could not find an ICD10_CC_mappings file for {version}/{year} under {cms_dir}"
+        )
     codes = []
-    with open(
-        find_internal_file(cms_dir, filename), newline="", encoding="utf-8-sig"
-    ) as f:
+    with open(path, newline="", encoding="utf-8-sig") as f:
         for row in csv.DictReader(f):
-            if row["AGE_EDIT_CONDITION"] or row["SEX_EDIT_CONDITION"]:
+            if (
+                row["MCE_AGE_CONDITION"]
+                or row["AGE_EDIT_CONDITION"]
+                or row["SEX_EDIT_CONDITION"]
+            ):
                 continue
             if str(int(float(row["CC"]))) in exclude_ccs:
                 continue
@@ -210,6 +223,13 @@ def run_repo_model_v24(beneficiaries: list, year: int):
     checks = []
     for b in beneficiaries:
         aged = "GE65" if b["age"] >= 65 else "LT65"
+        # NE_GRAFT uses CMS's NE_Aged rule (age >= 65, or age == 64 with orec == "0"), not the
+        # plain age check -- see ESRDBeneficiary.ne_aged.
+        ne_aged = (
+            "GE65"
+            if b["age"] >= 65 or (b["age"] == 64 and b["orec"] == "0")
+            else "LT65"
+        )
         dual = "FBD" if b["fbdual"] else "ND_PBD"
 
         r = model.score(
@@ -293,7 +313,7 @@ def run_repo_model_v24(beneficiaries: list, year: int):
                     b,
                     f"NE_GRAFT {dur_key}",
                     r.score_raw,
-                    f"SCORE_GRAFT_NE_{aged}_{dur_key}_{dual}",
+                    f"SCORE_GRAFT_NE_{ne_aged}_{dur_key}_{dual}",
                 )
             )
 
@@ -317,6 +337,13 @@ def run_repo_model_v21(beneficiaries: list, year: int):
     checks = []
     for b in beneficiaries:
         aged = "GE65" if b["age"] >= 65 else "LT65"
+        # NE_GRAFT uses CMS's NE_Aged rule (age >= 65, or age == 64 with orec == "0"), not the
+        # plain age check -- see ESRDv21Beneficiary.ne_aged.
+        ne_aged = (
+            "GE65"
+            if b["age"] >= 65 or (b["age"] == 64 and b["orec"] == "0")
+            else "LT65"
+        )
 
         r = model.score(
             gender=b["gender"],
@@ -391,7 +418,7 @@ def run_repo_model_v21(beneficiaries: list, year: int):
                     b,
                     f"NE_GRAFT {dur_key}",
                     r.score_raw,
-                    f"SCORE_GRAFT_NE_{dur_key}_{aged}",
+                    f"SCORE_GRAFT_NE_{dur_key}_{ne_aged}",
                 )
             )
 
@@ -410,6 +437,12 @@ def run_repo_model_v21(beneficiaries: list, year: int):
 def compare(checks: list, cms_df: pd.DataFrame) -> list:
     mismatches = []
     for b, label, repo_score, cms_col in checks:
+        if cms_col not in cms_df.columns:
+            # Some package vintages (e.g. 2027 "initial" packages) renamed
+            # SCORE_G_COMM_* to SCORE_GRAFT_COMM_*.
+            alias = cms_col.replace("SCORE_G_COMM_", "SCORE_GRAFT_COMM_")
+            if alias in cms_df.columns:
+                cms_col = alias
         if b["id"] not in cms_df.index or cms_col not in cms_df.columns:
             mismatches.append((b, label, None, repo_score, "missing CMS output"))
             continue
