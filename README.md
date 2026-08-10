@@ -466,6 +466,61 @@ decisions" above on MCE claims-editing) -- a mismatch caused by a real beneficia
 MCE-age-restricted code is expected, not a bug in either implementation.
 
 
+## Exporting Reference Data for a SQL Warehouse
+
+Every model's reference data (category definitions, coefficients/weights, diagnosis/NDC/procedure
+crosswalks, hierarchies, etc.) is checked into this repo under `reference_data/`, but in a shape
+optimized for the scoring engine, not for external consumption -- nested JSON keyed by category
+code, wide CSVs with family-specific population columns, bare category numbers needing a prefix
+applied at load time, and so on.
+
+`scripts/export_reference_data.py` reshapes all of it into a small, uniform set of flat CSV
+tables -- one shape across every model family (Commercial v07/v08, Medicare Community
+v22/v24/v28, ESRD v24_esrd/v21_esrd, RxHCC v08_rxhcc_t/x/t2/y1/y2) -- ready to bulk-load into any
+SQL warehouse (`dbt seed`, `COPY`, `BULK INSERT`, etc.):
+
+```
+poetry run python scripts/export_reference_data.py --out-dir ./export
+poetry run python scripts/export_reference_data.py --out-dir ./export --lob commercial
+poetry run python scripts/export_reference_data.py --out-dir ./export --lob medicare --model-version v28 --year 2026
+```
+
+It reuses `ReferenceFilesLoader` -- the same class every model's `score()` actually runs on -- so
+the export is always consistent with real scoring behavior and requires no CMS package download to
+run, just a checkout of this repo. With no filters, it walks every `(lob, model_version,
+benefit_year)` combination this repo ships and accumulates rows from all of them into one set of
+CSVs, so e.g. `category_definitions_<extracted_at>.csv` holds every benefit year and model version
+this repo supports in one table, distinguished by its `lob`/`model_version`/`benefit_year` columns.
+
+Each output filename is stamped with the UTC extraction timestamp (e.g.
+`category_definitions_20260812T140512Z.csv`), matching the `extracted_at` column written into every
+row, so repeated runs never silently overwrite a prior export. Passing `--lob` and/or `--year`
+also inserts those into the filename (e.g. `category_definitions_medicare_2026_20260812T140512Z.csv`),
+so narrowed exports are easy to tell apart on disk too.
+
+Twelve tables are produced -- `category_definitions`, `category_coefficients`,
+`hierarchy_definitions`, `diagnosis_code_to_category`, `ndc_to_category`,
+`procedure_code_to_category`, `acf_eligible_codes`, `category_groups` (which HCCs a Commercial
+group like `G01` drops/replaces when it fires), `esrd_flat_score_tables`,
+`infant_severity_categories`, `severe_illness_transplant_categories`, and
+`model_adjustment_factors` (normalization factors, coding-intensity adjusters, and Commercial's
+CSR adjuster -- consolidated into one table even though they have zero file-based representation
+anywhere else in this repo today, since they're otherwise hardcoded Python dicts scattered across
+a dozen model files). See the script's own docstring for the exact column list per table and which
+tables are family-specific (e.g. `ndc_to_category`/`acf_eligible_codes` are Commercial-only,
+`esrd_flat_score_tables` is ESRD-only).
+
+Deliberately not exported: the code lists that feed hardcoded Python business rules with no
+CMS-published tabular equivalent (age/sex diagnosis-code edit conditions, disease-interaction
+trigger logic, ACF eligibility age-gating, infant maturity status) -- those are genuine control
+flow, not lookup tables, so turning them into a table would invent a schema that doesn't
+correspond to anything CMS actually ships.
+
+This is an on-demand script only -- nothing is committed to the repo -- matching this repo's
+existing pattern for `cross_validate_*.py`/`build_*.py`; run it yourself against whatever version
+of this repo you have checked out.
+
+
 ## License
 MIT
 
