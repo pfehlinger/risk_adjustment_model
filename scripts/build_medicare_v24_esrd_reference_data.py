@@ -40,7 +40,15 @@ ESRD-specific adaptations over the V22/Community cold-start pattern:
 
 Usage:
     poetry run python scripts/build_medicare_v24_esrd_reference_data.py \\
+        --year 2026 \\
         --cms-package-dir /path/to/extracted/ESRD_v24_2026_T_package_v2/software/ESRD_v24
+
+Despite the "cold start" framing above (originally written for 2026, the first year this repo had
+any V24 ESRD reference data at all), this script works unchanged for any subsequent year's package
+too -- it always builds fresh from CMS's source rather than diffing against a prior year, so
+there's no reason a later year couldn't reuse it. Re-verify the age/gender-grid analysis behind
+GENUINELY_CONDITIONAL_CODES/NO_DEFAULT_CODES before reusing it for a new year, though -- don't
+assume CMS's edit-code list is frozen just because it happened to be identical for 2026 and 2027.
 """
 
 import argparse
@@ -50,9 +58,6 @@ from collections import defaultdict
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
-REPO_TARGET = (
-    REPO_ROOT / "src/risk_adjustment_model/reference_data/medicare/v24_esrd/2026"
-)
 
 RENAL_CCS = {"134", "135", "136", "137", "138"}
 
@@ -175,7 +180,7 @@ def cc_to_bare_number(cc: str) -> str:
     return str(int(float(cc)))
 
 
-def build_definitions(cms_dir: Path):
+def build_definitions(cms_dir: Path, repo_target: Path):
     hierarchy_rows = read_cms_csv(cms_dir, "V24_HCC_Hierarchies.csv")
     hierarchy = {}
     disease_hccs = set()
@@ -238,10 +243,10 @@ def build_definitions(cms_dir: Path):
                         }
                     break
 
-    REPO_TARGET.mkdir(parents=True, exist_ok=True)
-    with open(REPO_TARGET / "hierarchy_definition.json", "w") as f:
+    repo_target.mkdir(parents=True, exist_ok=True)
+    with open(repo_target / "hierarchy_definition.json", "w") as f:
         json.dump(hierarchy, f)
-    with open(REPO_TARGET / "category_definition.json", "w") as f:
+    with open(repo_target / "category_definition.json", "w") as f:
         json.dump(categories, f)
     print(
         f"  Wrote hierarchy_definition.json ({len(hierarchy)} entries), "
@@ -250,14 +255,33 @@ def build_definitions(cms_dir: Path):
     return categories
 
 
-def build_weights(cms_dir: Path, categories: dict):
+def build_weights(cms_dir: Path, categories: dict, repo_target: Path):
     weights = defaultdict(lambda: {col: 0.0 for col in ALL_WEIGHT_COLUMNS})
 
-    for row in read_cms_csv(cms_dir, "V24_CE_Relative_Factors.csv"):
+    ce_rows = read_cms_csv(cms_dir, "V24_CE_Relative_Factors.csv")
+    # Some package vintages (e.g. 2027 "initial" packages) renamed the community-graft source
+    # columns from "G_COMM_*" to "GRAFT_COMM_*" -- resolve against whichever is actually present
+    # in this package's header rather than assuming CE_COLUMN_MAP's exact CMS-side spelling.
+    header = ce_rows[0].keys() if ce_rows else []
+    resolved_ce_column_map = {}
+    for cms_col, repo_col in CE_COLUMN_MAP.items():
+        if cms_col in header:
+            resolved_ce_column_map[cms_col] = repo_col
+        else:
+            aliased = cms_col.replace("G_COMM_", "GRAFT_COMM_")
+            if aliased in header:
+                resolved_ce_column_map[aliased] = repo_col
+            else:
+                raise KeyError(
+                    f"Could not find CE column {cms_col!r} (or {aliased!r}) in "
+                    f"V24_CE_Relative_Factors.csv's header: {list(header)}"
+                )
+
+    for row in ce_rows:
         category = row["Variable"].strip()
         if category not in categories:
             continue  # ORIGDIS: unscored placeholder, same pattern as Community
-        for cms_col, repo_col in CE_COLUMN_MAP.items():
+        for cms_col, repo_col in resolved_ce_column_map.items():
             raw = row.get(cms_col, "").strip()
             weights[category][repo_col] = float(raw) if raw else 0.0
 
@@ -276,7 +300,7 @@ def build_weights(cms_dir: Path, categories: dict):
                         weights[category][repo_col] = float(raw) if raw else 0.0
                     break
 
-    with open(REPO_TARGET / "weights.csv", "w", newline="") as f:
+    with open(repo_target / "weights.csv", "w", newline="") as f:
         writer = csv.writer(f)
         writer.writerow(["category"] + ALL_WEIGHT_COLUMNS)
         for category, pop_weight in weights.items():
@@ -286,10 +310,12 @@ def build_weights(cms_dir: Path, categories: dict):
     print(f"  Wrote weights.csv ({len(weights)} data rows)")
 
 
-def build_flat_score_table(cms_dir: Path, cms_filename: str, out_filename: str):
+def build_flat_score_table(
+    cms_dir: Path, cms_filename: str, out_filename: str, repo_target: Path
+):
     rows = read_cms_csv(cms_dir, cms_filename)
     key_col = "Variable" if "Variable" in rows[0] else "Graft Duration"
-    with open(REPO_TARGET / out_filename, "w", newline="") as f:
+    with open(repo_target / out_filename, "w", newline="") as f:
         writer = csv.writer(f)
         writer.writerow(["key", "score"])
         for row in rows:
@@ -297,9 +323,21 @@ def build_flat_score_table(cms_dir: Path, cms_filename: str, out_filename: str):
     print(f"  Wrote {out_filename} ({len(rows)} rows)")
 
 
-def build_diag_map(cms_dir: Path):
+def read_icd10_mappings(cms_dir: Path, year: int):
+    # Some package vintages (e.g. 2027 "initial" packages) suffix this filename with "_initial".
+    base_name = f"ICD10_CC_mappings_ESRD_{year}_v24"
+    for candidate in (f"{base_name}.csv", f"{base_name}_initial.csv"):
+        path = cms_dir / "data/input/internal" / candidate
+        if path.exists():
+            return read_cms_csv(cms_dir, candidate)
+    raise FileNotFoundError(
+        f"Could not find an ICD10_CC_mappings file for year {year} under {cms_dir}"
+    )
+
+
+def build_diag_map(cms_dir: Path, year: int, repo_target: Path):
     rows_by_code = defaultdict(list)
-    for row in read_cms_csv(cms_dir, "ICD10_CC_mappings_ESRD_2026_v24.csv"):
+    for row in read_icd10_mappings(cms_dir, year):
         if cc_to_bare_number(row["CC"]) in RENAL_CCS:
             continue
         rows_by_code[row["ICD10"].strip()].append(row)
@@ -321,7 +359,7 @@ def build_diag_map(cms_dir: Path):
             out_lines.append([code, cc] + flag)
 
     out_lines.sort(key=lambda p: p[0])
-    with open(REPO_TARGET / "diag_to_category_map.txt", "w") as f:
+    with open(repo_target / "diag_to_category_map.txt", "w") as f:
         for parts in out_lines:
             f.write("\t".join(parts) + "\n")
     print(
@@ -333,14 +371,21 @@ def build_diag_map(cms_dir: Path):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--year", required=True, type=int)
     parser.add_argument("--cms-package-dir", required=True, type=Path)
     args = parser.parse_args()
 
+    repo_target = (
+        REPO_ROOT
+        / "src/risk_adjustment_model/reference_data/medicare/v24_esrd"
+        / str(args.year)
+    )
+
     print("Building hierarchy_definition.json / category_definition.json...")
-    categories = build_definitions(args.cms_package_dir)
+    categories = build_definitions(args.cms_package_dir, repo_target)
 
     print("Building weights.csv...")
-    build_weights(args.cms_package_dir, categories)
+    build_weights(args.cms_package_dir, categories, repo_target)
 
     print(
         "Building graft_duration_scores.csv / institutional_graft_scores.csv / transplant_scores.csv..."
@@ -349,18 +394,23 @@ def main():
         args.cms_package_dir,
         "V24_Graft_Duration_Scores.csv",
         "graft_duration_scores.csv",
+        repo_target,
     )
     build_flat_score_table(
         args.cms_package_dir,
         "V24_CE_Institutional_Graft_Scores.csv",
         "institutional_graft_scores.csv",
+        repo_target,
     )
     build_flat_score_table(
-        args.cms_package_dir, "V24_Transplant_Scores.csv", "transplant_scores.csv"
+        args.cms_package_dir,
+        "V24_Transplant_Scores.csv",
+        "transplant_scores.csv",
+        repo_target,
     )
 
     print("Building diag_to_category_map.txt...")
-    build_diag_map(args.cms_package_dir)
+    build_diag_map(args.cms_package_dir, args.year, repo_target)
 
     print("Done.")
 
