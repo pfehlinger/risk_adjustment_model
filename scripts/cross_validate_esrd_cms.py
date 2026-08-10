@@ -29,6 +29,21 @@ Renal categories (HCC134-138) are deliberately never sampled as diagnosis codes 
 excluded from this repo's reference data entirely, since CMS's own software forcibly zeroes them
 for every ESRD beneficiary -- see MedicareModelESRDv24's docstring) but *are* sampled for v21
 (which scores them normally).
+
+To validate against real data instead of Faker output (e.g. in a production setting), pass
+--real-data-dir pointing at a directory containing:
+
+    beneficiaries.csv (v24): ID,DOB,SEX,OREC,FBDUAL,PBDUAL,LTI
+    beneficiaries.csv (v21): ID,DOB,SEX,OREC,MCAID,NE_MCAID
+        DOB is ISO format (YYYY-MM-DD). SEX is M/F. Flag columns are 1/0/true/false.
+    diagnoses.csv: ID,ICD10
+        One row per (beneficiary, code) pair.
+
+Every real beneficiary is still swept through the full DIAL/NE_DIAL/GRAFT_COMM/GRAFT_INST/
+NE_GRAFT/TRANSPLANT_*M check grid (with both DUR4_9/DUR10PL duration buckets), same as synthetic
+mode -- graft_duration_months isn't a real-data input, it's an internal probe applied uniformly so
+every beneficiary's full population/duration matrix gets cross-checked regardless of what they're
+actually enrolled under. See scripts/_real_data.py's module docstring for the shared conventions.
 """
 
 import argparse
@@ -41,6 +56,14 @@ from pathlib import Path
 
 import pandas as pd
 from faker import Faker
+
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from _real_data import (  # noqa: E402
+    age_as_of_feb_1,
+    parse_bool,
+    parse_iso_dob,
+    read_real_csv,
+)
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 
@@ -138,6 +161,58 @@ def generate_beneficiaries_v21(n: int, seed: int, diag_codes: list) -> list:
                 "mcaid": random.random() < 0.3,
                 "ne_mcaid": random.random() < 0.3,
                 "diagnoses": random.sample(diag_codes, k=random.randint(0, 3)),
+            }
+        )
+    return beneficiaries
+
+
+def _load_real_diagnoses(real_data_dir: Path) -> dict:
+    diagnoses_by_id = {}
+    for row in read_real_csv(real_data_dir, "diagnoses.csv"):
+        diagnoses_by_id.setdefault(row["ID"].strip(), []).append(row["ICD10"].strip())
+    return diagnoses_by_id
+
+
+def load_real_beneficiaries_v24(real_data_dir: Path, year: int) -> list:
+    diagnoses_by_id = _load_real_diagnoses(real_data_dir)
+    beneficiaries = []
+    for row in read_real_csv(real_data_dir, "beneficiaries.csv"):
+        bene_id = row["ID"].strip()
+        dob = parse_iso_dob(row["DOB"])
+        gender = row["SEX"].strip().upper()
+        beneficiaries.append(
+            {
+                "id": bene_id,
+                "gender_code": 1 if gender == "M" else 2,
+                "gender": gender,
+                "age": age_as_of_feb_1(dob, year),
+                "orec": row["OREC"].strip(),
+                "fbdual": parse_bool(row["FBDUAL"]),
+                "pbdual": parse_bool(row["PBDUAL"]),
+                "lti": parse_bool(row["LTI"]),
+                "diagnoses": diagnoses_by_id.get(bene_id, []),
+            }
+        )
+    return beneficiaries
+
+
+def load_real_beneficiaries_v21(real_data_dir: Path, year: int) -> list:
+    diagnoses_by_id = _load_real_diagnoses(real_data_dir)
+    beneficiaries = []
+    for row in read_real_csv(real_data_dir, "beneficiaries.csv"):
+        bene_id = row["ID"].strip()
+        dob = parse_iso_dob(row["DOB"])
+        gender = row["SEX"].strip().upper()
+        beneficiaries.append(
+            {
+                "id": bene_id,
+                "gender_code": 1 if gender == "M" else 2,
+                "gender": gender,
+                "age": age_as_of_feb_1(dob, year),
+                "orec": row["OREC"].strip(),
+                "mcaid": parse_bool(row["MCAID"]),
+                "ne_mcaid": parse_bool(row["NE_MCAID"]),
+                "diagnoses": diagnoses_by_id.get(bene_id, []),
             }
         )
     return beneficiaries
@@ -460,25 +535,43 @@ def main():
     parser.add_argument("--cms-package-dir", required=True, type=Path)
     parser.add_argument("--n", type=int, default=100)
     parser.add_argument("--seed", type=int, default=42)
+    parser.add_argument(
+        "--real-data-dir",
+        type=Path,
+        default=None,
+        help="Validate against real data instead of Faker output. See module docstring for "
+        "the expected beneficiaries.csv/diagnoses.csv format.",
+    )
     args = parser.parse_args()
 
-    # v24 excludes renal CCs (never reachable -- see module docstring); v21 doesn't.
-    exclude_ccs = (
-        {"134", "135", "136", "137", "138"} if args.version == "v24" else set()
-    )
-    diag_codes = read_unconditional_diag_codes(
-        args.cms_package_dir, args.version, args.year, exclude_ccs
-    )
-    if not diag_codes:
-        raise SystemExit("No unconditional diagnosis codes found")
-
-    if args.version == "v24":
-        beneficiaries = generate_beneficiaries_v24(args.n, args.seed, diag_codes)
-        write_cms_inputs_v24(args.cms_package_dir, beneficiaries, args.year)
+    if args.real_data_dir:
+        if args.version == "v24":
+            beneficiaries = load_real_beneficiaries_v24(args.real_data_dir, args.year)
+            write_cms_inputs_v24(args.cms_package_dir, beneficiaries, args.year)
+        else:
+            beneficiaries = load_real_beneficiaries_v21(args.real_data_dir, args.year)
+            write_cms_inputs_v21(args.cms_package_dir, beneficiaries, args.year)
+        print(
+            f"Loaded {len(beneficiaries)} real beneficiaries from {args.real_data_dir}."
+        )
     else:
-        beneficiaries = generate_beneficiaries_v21(args.n, args.seed, diag_codes)
-        write_cms_inputs_v21(args.cms_package_dir, beneficiaries, args.year)
-    print(f"Generated {len(beneficiaries)} synthetic beneficiaries.")
+        # v24 excludes renal CCs (never reachable -- see module docstring); v21 doesn't.
+        exclude_ccs = (
+            {"134", "135", "136", "137", "138"} if args.version == "v24" else set()
+        )
+        diag_codes = read_unconditional_diag_codes(
+            args.cms_package_dir, args.version, args.year, exclude_ccs
+        )
+        if not diag_codes:
+            raise SystemExit("No unconditional diagnosis codes found")
+
+        if args.version == "v24":
+            beneficiaries = generate_beneficiaries_v24(args.n, args.seed, diag_codes)
+            write_cms_inputs_v24(args.cms_package_dir, beneficiaries, args.year)
+        else:
+            beneficiaries = generate_beneficiaries_v21(args.n, args.seed, diag_codes)
+            write_cms_inputs_v21(args.cms_package_dir, beneficiaries, args.year)
+        print(f"Generated {len(beneficiaries)} synthetic beneficiaries.")
 
     print("Running CMS transform.py...")
     cms_df = run_cms_transform(args.cms_package_dir)

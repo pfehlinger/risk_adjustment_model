@@ -24,6 +24,16 @@ scripts/build_medicare_rxhcc_reference_data.py's docstring for the same discover
 differs (T/X: "%m/%d/%Y", T2/Y1/Y2: "%Y%m%d") and is read directly from the package's own
 config.py rather than assumed, and CE/NE relative-factors column names are matched
 underscore-insensitively.
+
+To validate against real data instead of Faker output (e.g. in a production setting), pass
+--real-data-dir pointing at a directory containing:
+
+    beneficiaries.csv: ID,DOB,SEX,OREC,ESRD
+        DOB is ISO format (YYYY-MM-DD). SEX is M/F. ESRD is 1/0/true/false.
+    diagnoses.csv: ID,ICD10
+        One row per (beneficiary, code) pair.
+
+See scripts/_real_data.py's module docstring for the shared conventions.
 """
 
 import argparse
@@ -37,6 +47,14 @@ from pathlib import Path
 
 import pandas as pd
 from faker import Faker
+
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from _real_data import (  # noqa: E402
+    age_as_of_feb_1,
+    parse_bool,
+    parse_iso_dob,
+    read_real_csv,
+)
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 
@@ -158,6 +176,30 @@ def generate_beneficiaries(n: int, seed: int, diag_codes: list) -> list:
     return beneficiaries
 
 
+def load_real_beneficiaries(real_data_dir: Path, year: int) -> list:
+    diagnoses_by_id = {}
+    for row in read_real_csv(real_data_dir, "diagnoses.csv"):
+        diagnoses_by_id.setdefault(row["ID"].strip(), []).append(row["ICD10"].strip())
+
+    beneficiaries = []
+    for row in read_real_csv(real_data_dir, "beneficiaries.csv"):
+        bene_id = row["ID"].strip()
+        dob = parse_iso_dob(row["DOB"])
+        gender = row["SEX"].strip().upper()
+        beneficiaries.append(
+            {
+                "id": bene_id,
+                "gender_code": 1 if gender == "M" else 2,
+                "gender": gender,
+                "age": age_as_of_feb_1(dob, year),
+                "orec": row["OREC"].strip(),
+                "esrd": parse_bool(row["ESRD"]),
+                "diagnoses": diagnoses_by_id.get(bene_id, []),
+            }
+        )
+    return beneficiaries
+
+
 def write_cms_inputs(
     cms_dir: Path, segment: str, beneficiaries: list, year: int, dob_format: str
 ):
@@ -253,17 +295,31 @@ def main():
     parser.add_argument("--cms-package-dir", required=True, type=Path)
     parser.add_argument("--n", type=int, default=150)
     parser.add_argument("--seed", type=int, default=42)
+    parser.add_argument(
+        "--real-data-dir",
+        type=Path,
+        default=None,
+        help="Validate against real data instead of Faker output. See module docstring for "
+        "the expected beneficiaries.csv/diagnoses.csv format.",
+    )
     args = parser.parse_args()
 
     dob_format = get_dob_format(args.cms_package_dir)
-    diag_codes = read_unconditional_diag_codes(
-        args.cms_package_dir, args.segment, args.year
-    )
-    if not diag_codes:
-        raise SystemExit("No unconditional diagnosis codes found")
 
-    beneficiaries = generate_beneficiaries(args.n, args.seed, diag_codes)
-    print(f"Generated {len(beneficiaries)} synthetic beneficiaries.")
+    if args.real_data_dir:
+        beneficiaries = load_real_beneficiaries(args.real_data_dir, args.year)
+        print(
+            f"Loaded {len(beneficiaries)} real beneficiaries from {args.real_data_dir}."
+        )
+    else:
+        diag_codes = read_unconditional_diag_codes(
+            args.cms_package_dir, args.segment, args.year
+        )
+        if not diag_codes:
+            raise SystemExit("No unconditional diagnosis codes found")
+
+        beneficiaries = generate_beneficiaries(args.n, args.seed, diag_codes)
+        print(f"Generated {len(beneficiaries)} synthetic beneficiaries.")
 
     write_cms_inputs(
         args.cms_package_dir, args.segment, beneficiaries, args.year, dob_format
