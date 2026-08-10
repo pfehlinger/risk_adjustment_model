@@ -122,7 +122,7 @@ class MedicareBeneficiary(Beneficiary):
         self.model_year = model_year
         self.risk_model_age = self._determine_age(self.age, self.dob)
         self.disabled, self.orig_disabled = self._determine_disabled(
-            self.age, self.orec
+            self.risk_model_age, self.orec
         )
         if self.population == "NE":
             self.risk_model_population = self._get_new_enrollee_population(
@@ -185,13 +185,20 @@ class MedicareBeneficiary(Beneficiary):
             tuple: A tuple containing two boolean elements:
                 - A bool indicating if the individual is disabled (True if disabled, False otherwise).
                 - A bool indicating the original disability status (True if originally disabled, False otherwise).
+
+        Notes:
+            orig_disabled only considers orec == "1", not "3" (both DIB and ESRD) -- confirmed
+            against CMS's own current PY2026/2027 CMS_HCC_utils.py (`ORIGDIS = OREC == 1 and
+            DISABL == 0`) for V22 and V28. A beneficiary with orec == "3" is not treated as
+            "originally disabled" by CMS's own source, despite `disabled` itself keying off any
+            non-"0" orec while age < 65.
         """
         if age < 65 and orec != "0":
             disabled = True
         else:
             disabled = False
 
-        if orec in ("1", "3") and disabled == 0:
+        if orec == "1" and disabled == 0:
             orig_disabled = True
         else:
             orig_disabled = False

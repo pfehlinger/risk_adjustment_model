@@ -250,7 +250,7 @@ class MedicareModelV24(MedicareModel):
         return category
 
     def _determine_age_gender_category(
-        self, age: int, gender: str, population: str
+        self, age: int, gender: str, population: str, orec: str = None
     ) -> str:
         """
         Determines the demographic category based on age, gender, and population.
@@ -259,9 +259,16 @@ class MedicareModelV24(MedicareModel):
             age (int): Age of the individual.
             gender (str): Gender of the individual ('M' for male, 'F' for female).
             population (str): Beneficiary model population used for scoring
+            orec (str, optional): Original Entitlement Reason Code. Only relevant for New
+                                  Enrollee age-band resolution -- see Notes.
 
         Returns:
             str: Demographic category based on age, gender, and population.
+
+        Notes:
+            Per CMS (CMS_HCC_utils.py's get_ne_bene_age_sex_vars), a New Enrollee who is
+            exactly age 64 is recoded into the single-year "65" band if orec == "0" (aged in
+            this cycle), rather than the "60_64" band their raw age would otherwise fall into.
         """
         if population[:2] == "NE":
             demo_category_ranges = [
@@ -298,7 +305,10 @@ class MedicareModelV24(MedicareModel):
                 "95_GT",
             ]
 
-        demographic_category_range = determine_age_band(age, demo_category_ranges)
+        if population[:2] == "NE" and age == 64 and orec == "0":
+            demographic_category_range = "65"
+        else:
+            demographic_category_range = determine_age_band(age, demo_category_ranges)
 
         if population[:2] == "NE":
             demographic_category = f"NE{gender}{demographic_category_range}"
