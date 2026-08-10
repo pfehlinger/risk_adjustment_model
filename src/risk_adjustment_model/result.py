@@ -158,6 +158,27 @@ class ESRDv21ScoringResult(BaseScoringResult):
 
 
 @dataclass
+class RxHCCScoringResult(BaseScoringResult):
+    """
+    Represents the scoring result for a Medicare RxHCC (Part D) beneficiary.
+
+    Attributes:
+        (see BaseScoringResult for the common fields)
+        orec (str): The OREC (original reason for entitlement category) of the individual.
+        esrd (bool): End-Stage Renal Disease status.
+        population (str): The RxHCC population passed in -- see RxHCCBeneficiary.
+        coding_intensity_adjuster (float): The coding intensity adjuster applied to the score.
+        normalization_factor (float): The normalization factor applied to the score.
+    """
+
+    orec: str
+    esrd: bool
+    population: str
+    coding_intensity_adjuster: float
+    normalization_factor: float
+
+
+@dataclass
 class CommercialScoringResult(BaseScoringResult):
     """
     Represents the scoring result for a commercial insurance beneficiary.

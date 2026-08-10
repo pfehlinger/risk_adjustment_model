@@ -13,6 +13,10 @@ Currently, risk_adjustment_model supports the below model versions:
   business; imported alongside the CMS-HCC classes above
   * V21
   * V24
+* Medicare RxHCC (Part D) -- also a Medicare model variant, imported alongside the classes above.
+  Five independently-calibrated segments, all V08:
+  * T, X (PY2026)
+  * T2, Y1 (MAPD-only), Y2 (PDP-only) (PY2027)
 * Commercial/ACA (HHS-HCC)
   * V07
   * V08
@@ -61,10 +65,12 @@ and then pip installing locally into an virtual environment
   - `utilities.py`: Contains generic functions that are used throughout codebase.
   - `v22.py`, `v24.py`, `v28.py`: Medicare model version classes (`MedicareModelV22`, `MedicareModelV24`, `MedicareModelV28`).
   - `v24_esrd.py`, `v21_esrd.py`: Medicare ESRD model version classes (`MedicareModelESRDv24`, `MedicareModelESRDv21`). Unlike Community, `population` is one of DIAL/GRAFT_COMM/GRAFT_INST/NE_DIAL/NE_GRAFT/TRANSPLANT_1M/TRANSPLANT_2M/TRANSPLANT_3M -- see `MedicareModelESRDv24`'s module docstring for the full design (score composition, graft-duration bonus math, why renal categories are excluded from V24 but not V21).
+  - `rxhcc_model.py`: `RxHCCModel`, the shared base class for all RxHCC segment classes (scoring logic is identical across segments; only reference data differs).
+  - `v08_rxhcc_t.py`, `v08_rxhcc_x.py`, `v08_rxhcc_t2.py`, `v08_rxhcc_y1.py`, `v08_rxhcc_y2.py`: Medicare RxHCC segment classes (`MedicareModelRxHCCv08T`/`X`/`T2`/`Y1`/`Y2`). `population` is one of CE_NONLOW_AGED/CE_NONLOW_NONAGED/CE_LOW_AGED/CE_LOW_NONAGED/CE_LTI/NE_NONLOW_COMMUNITY/NE_LOW_COMMUNITY/NE_LTI -- see `RxHCCModel`'s module docstring for what distinguishes the five segments and the full population list.
   - `v07.py`, `v08.py`: Commercial/ACA model version classes (`CommercialModelV07`, `CommercialModelV08`).
 - `scripts/`: Developer/maintainer tooling, not part of the published package.
   - `build_v08_reference_data.py`: Regenerates Commercial/ACA reference data for a benefit year from a CMS DIY software package.
-  - `build_medicare_reference_data.py`, `build_medicare_v22_reference_data.py`, `build_medicare_v24_esrd_reference_data.py`, `build_medicare_v21_esrd_reference_data.py`: Regenerate/cold-start Medicare (CMS-HCC and ESRD) reference data from CMS DIY software packages.
+  - `build_medicare_reference_data.py`, `build_medicare_v22_reference_data.py`, `build_medicare_v24_esrd_reference_data.py`, `build_medicare_v21_esrd_reference_data.py`, `build_medicare_rxhcc_reference_data.py`: Regenerate/cold-start Medicare (CMS-HCC, ESRD, and RxHCC) reference data from CMS DIY software packages.
   - `cross_validate_cms.py`: Cross-validates `CommercialModelV08` against CMS's own DIY software on a synthetic dataset (see script docstring for setup).
 - `tests/`: Tests are stored here, one for each model version.
 - `README.md`: This README file.
@@ -217,6 +223,36 @@ of beneficiary flags (`mcaid`, `ne_mcaid` -- two independent Medicaid dual-statu
 no `pbdual`/`lti` at all). See `MedicareModelESRDv21`'s module docstring for what's simpler than
 V24 (no institutional-vs-community dual/aged split, no NE actuarial adjustment, renal categories
 scored normally rather than excluded).
+
+
+## Medicare RxHCC (Part D) Models
+
+RxHCC (`MedicareModelRxHCCv08T`/`X`/`T2`/`Y1`/`Y2`) is a Medicare model variant, not a separate
+line of business -- import it from `risk_adjustment_model` alongside the CMS-HCC/ESRD classes
+above. CMS publishes RxHCC as several independently-calibrated segments per payment year rather
+than one model per year: PY2026 ships T and X (differing by which source data the regression was
+calibrated on); PY2027 ships T2 (successor to T), Y1 (MAPD-only), and Y2 (PDP-only). Each segment
+is its own class, since T/X/T2 differ the same way MedicareModelV22/V24/V28 differ -- an
+independent calibration choice, not a fact about any individual beneficiary. See `RxHCCModel`'s
+module docstring for the full rationale.
+
+`population` is one of `CE_NONLOW_AGED`, `CE_NONLOW_NONAGED`, `CE_LOW_AGED`, `CE_LOW_NONAGED`,
+`CE_LTI`, `NE_NONLOW_COMMUNITY`, `NE_LOW_COMMUNITY`, `NE_LTI` -- passed directly by the caller,
+same as Community's CNA/CFA/etc, with Low/NonLow indicating Low-Income-Subsidy status. Unlike
+Community, `esrd` (End-Stage Renal Disease status) replaces `medicaid`/dual-status entirely; there
+is no dual-status input at all, since LIS status is already folded into `population`.
+
+```python
+>>> from risk_adjustment_model import MedicareModelRxHCCv08T, MedicareModelRxHCCv08Y1
+>>> model = MedicareModelRxHCCv08T()
+>>> results = model.score(gender="M", orec="0", diagnosis_codes=["E1169"], age=67, population="CE_NONLOW_AGED")
+>>> results.score_raw
+0.663
+>>> ne_model = MedicareModelRxHCCv08Y1(year=2027)
+>>> ne_results = ne_model.score(gender="M", orec="0", esrd=True, age=40, population="NE_NONLOW_COMMUNITY")
+>>> ne_results.category_list
+['ESRD_NORIGDIS_X_M35_44']
+```
 
 
 ## Commercial/ACA (HHS-HCC) Models
