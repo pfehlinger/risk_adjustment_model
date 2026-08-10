@@ -45,6 +45,8 @@ class MedicareModelV28(MedicareModel):
         norm_factor_dict = {
             2024: 1.015,
             2025: 1.045,
+            2026: 1.067,
+            2027: 1.079,
         }
         try:
             normalization_factor = norm_factor_dict[year]

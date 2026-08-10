@@ -212,3 +212,12 @@ def test_year_2026_and_2027_of_model():
             "HCC85_gDiabetesMellit",
             "DIABETES_CHF",
         }
+
+
+def test_normalization_and_coding_intensity_2026_2027():
+    # Published CMS PY2026/2027 figures for V22.
+    expected = {2026: 1.187, 2027: 1.202}
+    for year, norm_factor in expected.items():
+        model = MedicareModelV22(year=year)
+        assert isclose(model.coding_intensity_adjuster, 0.941)
+        assert isclose(model.normalization_factor, norm_factor)
