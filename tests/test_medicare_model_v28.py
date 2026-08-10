@@ -345,6 +345,45 @@ def test_new_enrollee_medicaid_is_independent_of_ne_medicaid():
     assert results.ne_medicaid is True
 
 
+def test_orig_disabled_only_applies_to_orec_1_not_orec_3():
+    # CMS's own current source (CMS_HCC_utils.py) only sets ORIGDIS for orec == "1", not "3"
+    # (both DIB and ESRD) -- despite `disabled` itself keying off any non-"0" orec while under 65.
+    model = MedicareModelV28()
+    results = model.score(
+        gender="M", orec="1", medicaid=False, age=68, population="CNA"
+    )
+    assert "OriginallyDisabled_Male" in results.category_list
+
+    results = model.score(
+        gender="M", orec="3", medicaid=False, age=68, population="CNA"
+    )
+    assert "OriginallyDisabled_Male" not in results.category_list
+
+
+def test_dob_input_does_not_crash():
+    # MedicareBeneficiary previously used the raw `age` input (None when dob was passed
+    # instead) in several places that need the resolved risk_model_age, crashing unconditionally
+    # for any dob-based scoring call.
+    model = MedicareModelV28(year=2026)
+    results = model.score(
+        gender="M", orec="0", medicaid=False, dob="1956-01-15", population="CNA"
+    )
+    assert results.risk_model_age == 70
+    assert "M70_74" in results.category_list
+
+
+def test_new_enrollee_age_64_orec_0_recodes_to_65():
+    # Per CMS (CMS_HCC_utils.py's get_ne_bene_age_sex_vars), a New Enrollee exactly age 64 with
+    # orec == "0" is recoded into the single-year "65" band, not "60_64".
+    model = MedicareModelV28()
+    results = model.score(gender="F", orec="0", medicaid=False, age=64, population="NE")
+    assert "NEF65" in results.category_list
+    assert "NEF60_64" not in results.category_list
+
+    results = model.score(gender="F", orec="1", medicaid=False, age=64, population="NE")
+    assert "NEF60_64" in results.category_list
+
+
 def test_raw_score():
     model = MedicareModelV28(year=2024)
     results = model.score(
