@@ -514,6 +514,89 @@ class ESRDv21Beneficiary(Beneficiary):
         )
 
 
+class RxHCCBeneficiary(Beneficiary):
+    """
+    Represents a Medicare RxHCC (Part D) beneficiary. Expands upon the Beneficiary class with
+    RxHCC-specific attributes: orec, esrd, and population.
+
+    Unlike Community/ESRD, `population` needs no derivation at all -- CMS's own RxHCC software
+    outputs 8 population columns (5 continuing-enrollee, 3 new-enrollee) that don't vary by any
+    beneficiary attribute other than the caller's direct choice, so `risk_model_population` is
+    always just `population` passed straight through. See v08_rxhcc_t.py (and its sibling
+    segment classes)'s module docstring for the full population list and design rationale.
+
+    Attributes:
+        gender (str): The gender of the beneficiary.
+        orec (str): The original reason for entitlement code.
+        esrd (bool): Indicates End-Stage Renal Disease status (dialysis, transplant, or post
+                     graft) -- RxHCC's beneficiary file has no dual/LIS status field at all;
+                     Low/NonLow-Income-Subsidy status is instead part of `population` itself,
+                     chosen directly by the caller like Community's CNA vs CFA.
+        population (str, optional): The RxHCC population the score is being computed for (default
+                                    "CE_NONLOW_AGED"). Valid values: CE_NONLOW_AGED,
+                                    CE_NONLOW_NONAGED, CE_LOW_AGED, CE_LOW_NONAGED, CE_LTI,
+                                    NE_NONLOW_COMMUNITY, NE_LOW_COMMUNITY, NE_LTI.
+        age (int, optional): The age of the beneficiary.
+        dob (str, optional): The date of birth of the beneficiary in ISO format.
+        disabled (bool): age < 65 and orec != "0" (matches CMS's DISABLED variable -- note this
+                         is broader than ESRD's, which further restricts orec to [1,2,3]).
+        aged (bool): age >= 65.
+        origdis (bool): "Originally disabled" -- orec == "1" and not disabled (i.e. age >= 65 and
+                        orec == "1"). Drives the M65OD/F65OD/OD65 demographic interaction
+                        categories for continuing enrollees, and the ESRD/NORIGDIS axis of new
+                        enrollee age/sex category resolution.
+        risk_model_age (int): Age of the beneficiary used in the model scoring calculations.
+        risk_model_population (str): Always equal to `population` -- see class docstring.
+    """
+
+    def __init__(
+        self,
+        gender: str,
+        orec: str,
+        esrd: bool = False,
+        population: str = "CE_NONLOW_AGED",
+        age: Union[None, int] = None,
+        dob: Union[None, str] = None,
+        model_year: Union[None, int] = None,
+    ):
+        super().__init__(gender, age, dob)
+        self.orec = orec
+        self.esrd = esrd
+        self.population = population
+        self.model_year = model_year
+        self.risk_model_age = self._determine_age(self.age, self.dob)
+        self.disabled = self.risk_model_age < 65 and self.orec != "0"
+        self.aged = self.risk_model_age >= 65
+        self.origdis = self.orec == "1" and not self.disabled
+        self.risk_model_population = population
+
+    def _determine_age(self, age: int, dob: str) -> int:
+        """
+        Determine the age of the beneficiary based on either age or date of birth (DOB), as of
+        February 1st of the payment year. See MedicareBeneficiary._determine_age for the full
+        rationale; the calculation is identical for RxHCC.
+        """
+        if dob:
+            if self.model_year is None:
+                raise ValueError(
+                    "When date of birth is provided, model year must also be provided"
+                )
+            reference_date = datetime.datetime.fromisoformat(f"{self.model_year}-02-01")
+            dt_dob = datetime.datetime.fromisoformat(dob)
+            age = (
+                reference_date.year
+                - dt_dob.year
+                - (
+                    (reference_date.month, reference_date.day)
+                    < (dt_dob.month, dt_dob.day)
+                )
+            )
+        elif age:
+            age = age
+
+        return age
+
+
 class CommercialBeneficiary(Beneficiary):
     """
     Represents a Commercial beneficiary which expands upon the Beneficiary class and
