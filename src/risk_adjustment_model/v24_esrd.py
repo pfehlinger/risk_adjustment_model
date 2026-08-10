@@ -14,6 +14,17 @@ TRANSPLANT_SCORE_KEYS = {
     "TRANSPLANT_3M": "TRANSPLANT_KIDNEY_ONLY_3M",
 }
 
+# CMS publishes ESRD normalization factors as two series, "Dialysis CMS-HCC" and "Functioning
+# Graft CMS-HCC" -- these populations belong to the former; everything else (GRAFT_COMM,
+# GRAFT_INST, NE_GRAFT) belongs to the latter. See _get_normalization_factor.
+DIALYSIS_GROUP_POPULATIONS = {
+    "DIAL",
+    "NE_DIAL",
+    "TRANSPLANT_1M",
+    "TRANSPLANT_2M",
+    "TRANSPLANT_3M",
+}
+
 
 class MedicareModelESRDv24(MedicareModel):
     """
@@ -114,14 +125,30 @@ class MedicareModelESRDv24(MedicareModel):
         super().__init__("v24_esrd", year)
         self.normalization_factor = self._get_normalization_factor(self.model_year)
 
-    def _get_normalization_factor(self, year: int) -> float:
+    def _get_normalization_factor(self, year: int, population: str = "DIAL") -> float:
         """
-        No published ESRD normalization factor has been sourced yet (it comes from CMS's annual
-        Rate Announcement, not the DIY software package this repo's reference data was
-        regenerated from) -- falls back to the base class default of 1 until a real value is
-        added here.
+        CMS publishes ESRD normalization factors as two distinct series per year -- "Dialysis
+        CMS-HCC" (covers DIAL, NE_DIAL, and the TRANSPLANT_*M populations) and "Functioning Graft
+        CMS-HCC" (covers GRAFT_COMM, GRAFT_INST, and NE_GRAFT) -- not one flat value per year the
+        way Community is. `population` selects which series applies; see score(), which resolves
+        this per call (self.normalization_factor is not a fixed per-instance value for ESRD).
+
+        Returns:
+            float: The normalization factor for the given year and population's group.
         """
-        norm_factor_dict = {}
+        dialysis_group_norm_factor_dict = {
+            2026: 1.062,
+            2027: 1.072,
+        }
+        graft_group_norm_factor_dict = {
+            2026: 1.104,
+            2027: 1.119,
+        }
+        norm_factor_dict = (
+            dialysis_group_norm_factor_dict
+            if population in DIALYSIS_GROUP_POPULATIONS
+            else graft_group_norm_factor_dict
+        )
         try:
             normalization_factor = norm_factor_dict[year]
         except KeyError:
@@ -170,6 +197,11 @@ class MedicareModelESRDv24(MedicareModel):
         Returns:
             ESRDScoringResult: An instantiated object of ESRDScoringResult class.
         """
+        # ESRD's normalization factor depends on which population is being scored (dialysis-group
+        # vs. functioning-graft-group series), not just year -- see _get_normalization_factor.
+        self.normalization_factor = self._get_normalization_factor(
+            self.model_year, population
+        )
         beneficiary = ESRDBeneficiary(
             gender, orec, fbdual, pbdual, lti, population, age, dob, self.model_year
         )

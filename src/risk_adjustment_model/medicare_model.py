@@ -351,6 +351,8 @@ class MedicareModel(BaseModel):
             2023: 0.941,
             2024: 0.941,
             2025: 0.941,
+            2026: 0.941,
+            2027: 0.941,
         }
         if coding_intensity_dict.get(year):
             coding_intensity_adjuster = coding_intensity_dict.get(year)

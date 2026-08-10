@@ -173,6 +173,11 @@ class RxHCCScoringResult(BaseScoringResult):
         population (str): The RxHCC population passed in -- see RxHCCBeneficiary.
         coding_intensity_adjuster (float): The coding intensity adjuster applied to the score.
         normalization_factor (float): The normalization factor applied to the score.
+        channel (str, optional): Enrollment channel ("MAPD" or "PDP") used to select the
+                                 normalization factor. Only meaningful for MedicareModelRxHCCv08X,
+                                 whose regression is calibrated on pooled PDP+MAPD data but whose
+                                 published normalization factor differs by channel -- see
+                                 MedicareModelRxHCCv08X's docstring. None for every other segment.
     """
 
     orec: str
@@ -180,6 +185,7 @@ class RxHCCScoringResult(BaseScoringResult):
     population: str
     coding_intensity_adjuster: float
     normalization_factor: float
+    channel: Union[str, None] = None
 
 
 @dataclass

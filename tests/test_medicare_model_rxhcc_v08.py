@@ -155,3 +155,52 @@ def test_y1_segment_golden_values():
         gender="M", orec="0", esrd=False, age=68, population="NE_NONLOW_COMMUNITY"
     )
     assert isclose(results.score_raw, 0.669)
+
+
+@pytest.mark.parametrize("model_class", SEGMENT_CLASSES)
+def test_coding_intensity_is_always_one(model_class):
+    # Part D has no statutory coding-intensity adjustment the way Part C does.
+    model = model_class()
+    assert isclose(model.coding_intensity_adjuster, 1)
+
+
+def test_t_x_t2_y1_y2_each_apply_their_own_normalization_factor():
+    # Published CMS figures -- each segment differs from every other, even within the same
+    # payment year (T2/Y1/Y2 are all 2027), so normalization can't live in the shared base class.
+    assert isclose(MedicareModelRxHCCv08T(year=2026).normalization_factor, 1.202)
+    assert isclose(MedicareModelRxHCCv08T2(year=2027).normalization_factor, 1.237)
+    assert isclose(MedicareModelRxHCCv08Y1(year=2027).normalization_factor, 1.109)
+    assert isclose(MedicareModelRxHCCv08Y2(year=2027).normalization_factor, 1.005)
+
+
+def test_x_segment_channel_affects_normalization_not_score_raw():
+    # X's regression is calibrated on pooled PDP+MAPD data (score_raw doesn't vary by channel),
+    # but CMS publishes a different normalization factor for each -- 1.194 MAPD vs. 0.887 PDP.
+    model = MedicareModelRxHCCv08X(year=2026)
+    kwargs = dict(
+        gender="M",
+        orec="0",
+        esrd=False,
+        diagnosis_codes=["E1169"],
+        age=67,
+        population="CE_NONLOW_AGED",
+    )
+    mapd = model.score(**kwargs, channel="MAPD")
+    pdp = model.score(**kwargs, channel="PDP")
+
+    assert isclose(mapd.score_raw, pdp.score_raw)
+    assert not isclose(mapd.score, pdp.score)
+    assert isclose(mapd.normalization_factor, 1.194)
+    assert isclose(pdp.normalization_factor, 0.887)
+    assert mapd.channel == "MAPD"
+    assert pdp.channel == "PDP"
+
+    # channel defaults to MAPD when not passed.
+    default = model.score(**kwargs)
+    assert isclose(default.score, mapd.score)
+    assert default.channel == "MAPD"
+
+    # Non-X segments don't have a channel concept -- always None.
+    t = MedicareModelRxHCCv08T(year=2026)
+    t_result = t.score(**kwargs)
+    assert t_result.channel is None

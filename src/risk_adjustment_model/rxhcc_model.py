@@ -75,28 +75,28 @@ class RxHCCModel(MedicareModel):
     Methods:
         Overwrites:
             score, _determine_demographic_categories, _determine_disease_interactions,
-            _age_sex_edits, _get_normalization_factor.
+            _age_sex_edits, _get_coding_intensity_adjuster.
 
         New:
             _ce_age_gender_category, _ne_age_gender_category, _determine_demographic_interactions.
+
+    Notes:
+        _get_normalization_factor is deliberately *not* overridden here, unlike Community/ESRD --
+        CMS publishes a distinct normalization factor per RxHCC segment (T/X/T2/Y1/Y2), and they
+        differ from each other even within the same payment year, so there's no single value that
+        belongs at this shared-base-class level. Each v08_rxhcc_*.py class defines its own.
     """
 
     category_prefix = "RXHCC"
 
-    def _get_normalization_factor(self, year: int) -> float:
+    def _get_coding_intensity_adjuster(self, year: int) -> float:
         """
-        No published RxHCC normalization factor has been sourced yet (Part D's own normalization
-        comes from CMS's annual Rate Announcement, a different figure than Community's) -- falls
-        back to the base class default of 1 until a real value is added here. Coding intensity
-        similarly falls back to MedicareModel's shared Part-C-derived adjuster, for consistency
-        with how V22/ESRD handle the same gap, until an RxHCC-specific figure is sourced.
+        Part D has no statutory coding-intensity adjustment requirement the way Part C (Medicare
+        Advantage) does -- confirmed against CMS's published PY2026/2027 figures, which give a
+        coding-intensity adjuster for Community/ESRD but not RxHCC. Always returns 1 (no
+        adjustment), overriding MedicareModel's shared Part C coding_intensity_dict.
         """
-        norm_factor_dict = {}
-        try:
-            normalization_factor = norm_factor_dict[year]
-        except KeyError:
-            normalization_factor = 1
-        return normalization_factor
+        return 1
 
     def score(
         self,

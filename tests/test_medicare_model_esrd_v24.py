@@ -234,3 +234,41 @@ def test_transplant_flat_scores():
     assert isclose(r2.score_raw, 0.941)
     assert isclose(r3.score_raw, 0.941)
     assert r1.category_list == []
+
+
+def test_normalization_factor_is_population_group_dependent():
+    # CMS publishes a distinct normalization factor for the "Dialysis CMS-HCC" series (DIAL,
+    # NE_DIAL, TRANSPLANT_*M) vs. the "Functioning Graft CMS-HCC" series (GRAFT_COMM, GRAFT_INST,
+    # NE_GRAFT) -- not one flat value per year.
+    model = MedicareModelESRDv24(year=2026)
+    assert isclose(model.coding_intensity_adjuster, 0.941)
+
+    dial = model.score(gender="M", orec="0", age=50, population="DIAL")
+    assert isclose(dial.normalization_factor, 1.062)
+
+    ne_dial = model.score(gender="M", orec="0", age=50, population="NE_DIAL")
+    assert isclose(ne_dial.normalization_factor, 1.062)
+
+    transplant = model.score(gender="M", orec="0", age=50, population="TRANSPLANT_1M")
+    assert isclose(transplant.normalization_factor, 1.062)
+
+    graft_comm = model.score(
+        gender="M", orec="0", age=50, population="GRAFT_COMM", graft_duration_months=6
+    )
+    assert isclose(graft_comm.normalization_factor, 1.104)
+
+    graft_inst = model.score(
+        gender="M", orec="0", age=50, population="GRAFT_INST", graft_duration_months=6
+    )
+    assert isclose(graft_inst.normalization_factor, 1.104)
+
+    ne_graft = model.score(
+        gender="M", orec="0", age=50, population="NE_GRAFT", graft_duration_months=6
+    )
+    assert isclose(ne_graft.normalization_factor, 1.104)
+
+    # 2027 figures -- checked directly via _get_normalization_factor, since this repo doesn't
+    # have 2027 ESRD reference data built yet (a separate, tracked gap; see README) and so can't
+    # instantiate a 2027 model to score through.
+    assert isclose(model._get_normalization_factor(2027, "DIAL"), 1.072)
+    assert isclose(model._get_normalization_factor(2027, "GRAFT_COMM"), 1.119)

@@ -45,15 +45,13 @@ class MedicareModelV22(MedicareModel):
 
         This dictionary is updated each year to include the normalization factor from the final announcement.
 
-        Note: unlike V24/V28, no published normalization factor for V22 has been sourced yet (it
-        comes from CMS's annual Rate Announcement, not the DIY software package this repo's other
-        reference data was regenerated from) -- falls back to the base class default of 1 (i.e. no
-        normalization effect) until a real value is added here.
-
         Returns:
             float: The normalization factor.
         """
-        norm_factor_dict = {}
+        norm_factor_dict = {
+            2026: 1.187,
+            2027: 1.202,
+        }
         try:
             normalization_factor = norm_factor_dict[year]
         except KeyError:
