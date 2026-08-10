@@ -388,30 +388,46 @@ diagnosis codes) and why.
 
 ### Medicare (CMS-HCC, ESRD, RxHCC)
 
-No automated equivalent exists yet for these three families (this is a real gap, not an oversight
-to hide -- if you want one built, ask). Every V22/V24/V28, ESRD V24/V21, and RxHCC T/X/T2/Y1/Y2
-cross-validation done so far was run manually, directly against CMS's own package, as follows:
+Automated, mirroring the Commercial script above, one per family (Medicare's population shape
+means each family's CMS output already contains a score column per population for every
+beneficiary in one row, so unlike Commercial these scripts don't need to pick one population per
+synthetic beneficiary -- they check every population CMS emits, for every beneficiary):
 
-1. Download and extract the relevant CMS Python DIY package (e.g. `CMS_HCC_v28_2026_T_package`,
-   `ESRD_v24_2026_T_package`, `RxHCC_v8_2027_Y1_package`) from
-   [CMS's Medicare risk adjustment page](https://www.cms.gov/medicare/payment/medicare-advantage-rates-statistics/risk-adjustment).
-2. Create a virtual environment and `pip install -r requirements.txt` from inside the extracted
-   package (it needs `pandas`/`numpy` directly -- this is CMS's own software, independent of this
-   repo's `cms_validation` poetry group).
-3. Edit `software/<Model>/data/input/user_defined/beneficiaries.csv` and `diagnoses.csv` with test
-   beneficiaries. Column layout and `DOB_format` are defined in that model's `config.py` -- they
-   differ by family (e.g. ESRD's beneficiaries.csv has `FBDual,PBDual,LTI`; RxHCC's has `ESRD`; V21
-   ESRD's has `MCAID,NEMCAID`). **Age is computed by CMS as of February 1st of the payment year**,
-   not the package's release date -- get this wrong and every score will look like a mismatch that
-   isn't one.
-4. From the package's base folder (the one containing `software/`, not inside it), run:
-   `python ./software/<Model>/transform.py`. Output lands in
-   `software/<Model>/data/output/*_scores.csv`, with one `SCORE_<population>` column per
-   population CMS's software computes.
-5. Call this repo's `model.score(...)` with the same beneficiary/diagnosis inputs and compare
-   `results.score_raw` against the matching `SCORE_*` column. Each model class's docstring
-   documents its `population` values and, for the ones with a non-obvious CMS-column mapping
-   (ESRD, RxHCC), the exact naming correspondence.
+```
+poetry install --with cms_validation
+
+# CMS-HCC Community -- V22, V24, V28
+poetry run python scripts/cross_validate_medicare_cms.py \
+    --version v28 --year 2026 \
+    --cms-package-dir /path/to/extracted/CMS_HCC_v28_2026_T_package_.../software/CMS_HCC_v28 \
+    --n 150 --seed 42
+
+# ESRD -- V24, V21
+poetry run python scripts/cross_validate_esrd_cms.py \
+    --version v24 --year 2026 \
+    --cms-package-dir /path/to/extracted/ESRD_v24_2026_T_package_.../software/ESRD_v24 \
+    --n 100 --seed 42
+
+# RxHCC -- T, X, T2, Y1, Y2
+poetry run python scripts/cross_validate_rxhcc_cms.py \
+    --segment T --year 2026 \
+    --cms-package-dir /path/to/extracted/RxHCC_v8_2026_T_package_.../software/RxHCC \
+    --n 150 --seed 42
+```
+
+Download and extract the relevant CMS Python DIY package first from
+[CMS's Medicare risk adjustment page](https://www.cms.gov/medicare/payment/medicare-advantage-rates-statistics/risk-adjustment)
+(`--cms-package-dir` should point at the innermost `software/<Model>` folder, not the outer
+package directory). Each script's own docstring documents what it deliberately excludes
+(MCE-editable and age/sex-edit diagnosis codes, for the same reason as Commercial's script) and
+any package-vintage quirks it works around (e.g. the 2027 "initial" packages naming
+`SCORE_NE` as `SCORE_NEW_ENROLLEE` instead, or RxHCC's `CE_NonLow_Aged` vs `CE_NonLowAged` column
+naming across vintages).
+
+**One known exception**: CMS's PY2025 V24 Community package predates the current Python DIY
+format (it ships as SAS macros with no runnable Python reference implementation), so there's no
+automated path for it -- that gap was closed via one-off manual arithmetic against CMS's SAS
+source instead, not via any of the scripts above.
 
 The build scripts in `scripts/` (`build_medicare_reference_data.py`,
 `build_medicare_v22_reference_data.py`, `build_medicare_v24_esrd_reference_data.py`,
