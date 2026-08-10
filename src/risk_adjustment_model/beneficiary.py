@@ -223,6 +223,297 @@ class MedicareBeneficiary(Beneficiary):
         return ne_population
 
 
+class ESRDBeneficiary(Beneficiary):
+    """
+    Represents a Medicare ESRD (End-Stage Renal Disease) beneficiary. Expands upon the
+    Beneficiary class with ESRD-specific attributes: orec, fbdual, pbdual, lti, and population.
+
+    Unlike MedicareBeneficiary, there is no single "medicaid" flag -- ESRD's own beneficiary
+    file distinguishes Full Benefit Dual (fbdual) from Partial Benefit Dual (pbdual), and both
+    feed directly into scoring (as opposed to Community, where dual status is folded entirely
+    into the population choice, e.g. CFA vs CPA). See v24_esrd.py's module docstring for the
+    full population/scoring design this supports.
+
+    Attributes:
+        gender (str): The gender of the beneficiary.
+        orec (str): The original reason for entitlement code.
+        fbdual (bool): Full Benefit Dual (Medicare + full Medicaid) status.
+        pbdual (bool): Partial Benefit Dual status.
+        lti (bool): Long-Term Institutional status.
+        population (str, optional): The ESRD population the score is being computed for. Valid
+                                    values are DIAL, GRAFT_COMM, GRAFT_INST, NE_DIAL, NE_GRAFT,
+                                    TRANSPLANT_1M, TRANSPLANT_2M, TRANSPLANT_3M (default "DIAL").
+        age (int, optional): The age of the beneficiary.
+        dob (str, optional): The date of birth of the beneficiary in ISO format.
+        disabled (bool): Indicates if the beneficiary is disabled (age < 65 and orec in [1,2,3]).
+        aged (bool): Indicates if the beneficiary is 65 or older.
+        ce_orig_disabled (bool): Continuing-enrollee "originally disabled" status -- true only
+                                 when orec == "1" and the beneficiary is not currently disabled
+                                 (i.e. age >= 65 and orec == "1"). Distinct from Community's
+                                 orig_disabled, which also treats orec == "3" as originally
+                                 disabled; ESRD's CE model does not.
+        origesrd (bool): Indicates the beneficiary's original entitlement reason was ESRD
+                         (orec in ["2", "3"]).
+        ne_dial_origdis (bool): New enrollee dialysis "originally disabled" status -- true
+                                whenever orec == "1", with no age gate.
+        ne_graft_origdis (bool): New enrollee graft "originally disabled" status -- true only
+                                 when age >= 65 and orec == "1" (unlike ne_dial_origdis, this one
+                                 is age-gated, matching CMS's NE_ORIGDIS vs NE_ORIGDIS_G split).
+        ne_aged (bool): New enrollee "aged" status used only for NE graft duration/actuarial
+                        adjustment math -- true when age >= 65, or age == 64 with orec == "0".
+        risk_model_age (int): Age of the beneficiary used in the model scoring calculations.
+        risk_model_population (str): The fully-qualified weights.csv population column resolved
+                                     from population + fbdual/pbdual/age, e.g. "GRAFT_COMM_FBD_GE65"
+                                     or "NE_DIAL_ND_PBD_ORIGDIS". DIAL, GRAFT_INST, and the flat
+                                     TRANSPLANT_*M populations pass through unchanged since their
+                                     weights.csv columns don't vary by dual/origdis status.
+    """
+
+    def __init__(
+        self,
+        gender: str,
+        orec: str,
+        fbdual: bool = False,
+        pbdual: bool = False,
+        lti: bool = False,
+        population: str = "DIAL",
+        age: Union[None, int] = None,
+        dob: Union[None, str] = None,
+        model_year: Union[None, int] = None,
+    ):
+        """
+        Initialize an ESRDBeneficiary object.
+
+        Args:
+            gender (str): The gender of the beneficiary.
+            orec (str): The original reason entitlement code.
+            fbdual (bool): Full Benefit Dual status (default False).
+            pbdual (bool): Partial Benefit Dual status (default False).
+            lti (bool): Long-Term Institutional status (default False).
+            population (str, optional): The ESRD population the score is being computed for
+                                        (default "DIAL"). See class docstring for valid values.
+            age (int, optional): The age of the beneficiary.
+            dob (str, optional): The date of birth of the beneficiary in ISO format.
+            model_year (int, optional): The model year associated with the beneficiary. Necessary
+                                        to determine age when dob is passed in.
+        """
+        super().__init__(gender, age, dob)
+        self.orec = orec
+        self.fbdual = fbdual
+        self.pbdual = pbdual
+        self.lti = lti
+        self.population = population
+        self.model_year = model_year
+        self.risk_model_age = self._determine_age(self.age, self.dob)
+        self.disabled = self.risk_model_age < 65 and self.orec in ("1", "2", "3")
+        self.aged = self.risk_model_age >= 65
+        self.ce_orig_disabled = self.orec == "1" and not self.disabled
+        self.origesrd = self.orec in ("2", "3")
+        self.ne_dial_origdis = self.orec == "1"
+        self.ne_graft_origdis = self.risk_model_age >= 65 and self.orec == "1"
+        self.ne_aged = self.risk_model_age >= 65 or (
+            self.risk_model_age == 64 and self.orec == "0"
+        )
+        self.risk_model_population = self._get_risk_model_population(population)
+
+    def _determine_age(self, age: int, dob: str) -> int:
+        """
+        Determine the age of the beneficiary based on either age or date of birth (DOB), as of
+        February 1st of the payment year. See MedicareBeneficiary._determine_age for the full
+        rationale; the calculation is identical for ESRD.
+        """
+        if dob:
+            if self.model_year is None:
+                raise ValueError(
+                    "When date of birth is provided, model year must also be provided"
+                )
+            reference_date = datetime.datetime.fromisoformat(f"{self.model_year}-02-01")
+            dt_dob = datetime.datetime.fromisoformat(dob)
+            age = (
+                reference_date.year
+                - dt_dob.year
+                - (
+                    (reference_date.month, reference_date.day)
+                    < (dt_dob.month, dt_dob.day)
+                )
+            )
+        elif age:
+            age = age
+
+        return age
+
+    def _get_risk_model_population(self, population: str) -> str:
+        """
+        Resolve the caller-facing population choice into the fully-qualified weights.csv
+        population column, mirroring how MedicareBeneficiary resolves population="NE" into one
+        of four NE_* sub-populations. DIAL, GRAFT_INST, and the flat TRANSPLANT_*M populations
+        pass through unchanged -- their base category coefficients don't vary by dual/origdis
+        status (GRAFT_INST's duration-bonus math still uses fbdual/pbdual/lti directly, applied
+        as a scoring-time adjustment in v24_esrd.py rather than a population axis).
+
+        Args:
+            population (str): DIAL, GRAFT_COMM, GRAFT_INST, NE_DIAL, NE_GRAFT, or one of
+                              TRANSPLANT_1M/TRANSPLANT_2M/TRANSPLANT_3M.
+
+        Returns:
+            str: The fully-qualified weights.csv population column.
+        """
+        dual = "FBD" if self.fbdual else "ND_PBD"
+
+        if population in ("DIAL", "GRAFT_INST") or population.startswith("TRANSPLANT_"):
+            return population
+        if population == "GRAFT_COMM":
+            aged = "GE65" if self.aged else "LT65"
+            return f"GRAFT_COMM_{dual}_{aged}"
+        if population == "NE_DIAL":
+            origdis = "ORIGDIS" if self.ne_dial_origdis else "NORIGDIS"
+            return f"NE_DIAL_{dual}_{origdis}"
+        if population == "NE_GRAFT":
+            origdis = "ORIGDIS" if self.ne_graft_origdis else "NORIGDIS"
+            return f"NE_GRAFT_{dual}_{origdis}"
+
+        raise ValueError(
+            f"Unrecognized ESRD population: {population}. Valid values are DIAL, GRAFT_COMM, "
+            "GRAFT_INST, NE_DIAL, NE_GRAFT, TRANSPLANT_1M, TRANSPLANT_2M, TRANSPLANT_3M"
+        )
+
+
+class ESRDv21Beneficiary(Beneficiary):
+    """
+    Represents a Medicare ESRD V21 (legacy) beneficiary. V21 is structurally simpler than V24:
+    a Medicaid dual-status flag (no Full/Partial Benefit Dual split) and no Long-Term
+    Institutional concept at all -- CMS's own V21 beneficiary file is just ID,DOB,SEX,OREC,
+    MCAID,NEMCAID. Kept as its own class rather than reusing ESRDBeneficiary's fbdual/pbdual/lti
+    fields, since those don't apply to V21 at all and would be misleading to expose.
+
+    Note CMS's beneficiary file has *two separate* dual-status columns, not one: `mcaid` drives
+    the continuing-enrollee (DIAL/GRAFT_COMM/GRAFT_INST) demographic interactions, while
+    `ne_mcaid` is an independent flag that drives new-enrollee (NE_DIAL/NE_GRAFT) population
+    resolution -- confirmed directly from CMS's transform.py, which reads `row['MCAID']` for the
+    CE MCAID_*_Aged/NonAged interactions and `row['NEMCAID']` for the NE population split. Unlike
+    V24 (where the same fbdual/pbdual values feed both CE and NE), these are not the same
+    real-world fact necessarily -- do not default one from the other.
+
+    Attributes:
+        gender (str): The gender of the beneficiary.
+        orec (str): The original reason for entitlement code.
+        mcaid (bool): Medicaid dual status, used for continuing-enrollee scoring.
+        ne_mcaid (bool): Medicaid dual status, used for new-enrollee population resolution. A
+                         separate CMS input from `mcaid` -- see class docstring.
+        population (str, optional): The ESRD population the score is being computed for. Valid
+                                    values are DIAL, GRAFT_COMM, GRAFT_INST, NE_DIAL, NE_GRAFT,
+                                    TRANSPLANT_1M, TRANSPLANT_2M, TRANSPLANT_3M (default "DIAL").
+        age (int, optional): The age of the beneficiary.
+        dob (str, optional): The date of birth of the beneficiary in ISO format.
+        disabled (bool): age < 65 and orec in [1,2,3]. Distinct from `aged` (plain age >= 65) --
+                         V21's own MCAID_*_Aged/NonAged and NONAGED_* interaction categories are
+                         keyed off `disabled` (matching CMS's DISABL variable), not plain age.
+        aged (bool): age >= 65. Used for Originally_ESRD_*, and the graft-duration bonus's
+                    aged/nonaged bucket.
+        ce_orig_disabled (bool): orec == "1" and not disabled (i.e. age >= 65 and orec == "1").
+        origesrd (bool): orec in ["2", "3"].
+        ne_dial_origdis (bool): orec == "1", no age gate.
+        ne_graft_origdis (bool): age >= 65 and orec == "1".
+        ne_aged (bool): age >= 65, or age == 64 with orec == "0". Used only for NE_GRAFT's
+                        graft-duration bonus.
+        risk_model_age (int): Age of the beneficiary used in the model scoring calculations.
+        risk_model_population (str): The fully-qualified weights.csv population column. DIAL,
+                                     GRAFT_COMM, GRAFT_INST, and the TRANSPLANT_*M populations
+                                     pass through unchanged -- unlike V24, V21's GRAFT_COMM/
+                                     GRAFT_INST base coefficients don't vary by dual status at
+                                     all. Only NE_DIAL/NE_GRAFT resolve to a dual+origdis
+                                     sub-population, e.g. "NE_DIAL_MCAID_ORIGDIS".
+    """
+
+    def __init__(
+        self,
+        gender: str,
+        orec: str,
+        mcaid: bool = False,
+        ne_mcaid: bool = False,
+        population: str = "DIAL",
+        age: Union[None, int] = None,
+        dob: Union[None, str] = None,
+        model_year: Union[None, int] = None,
+    ):
+        super().__init__(gender, age, dob)
+        self.orec = orec
+        self.mcaid = mcaid
+        self.ne_mcaid = ne_mcaid
+        self.population = population
+        self.model_year = model_year
+        self.risk_model_age = self._determine_age(self.age, self.dob)
+        self.disabled = self.risk_model_age < 65 and self.orec in ("1", "2", "3")
+        self.aged = self.risk_model_age >= 65
+        self.ce_orig_disabled = self.orec == "1" and not self.disabled
+        self.origesrd = self.orec in ("2", "3")
+        self.ne_dial_origdis = self.orec == "1"
+        self.ne_graft_origdis = self.risk_model_age >= 65 and self.orec == "1"
+        self.ne_aged = self.risk_model_age >= 65 or (
+            self.risk_model_age == 64 and self.orec == "0"
+        )
+        self.risk_model_population = self._get_risk_model_population(population)
+
+    def _determine_age(self, age: int, dob: str) -> int:
+        """
+        Determine the age of the beneficiary based on either age or date of birth (DOB), as of
+        February 1st of the payment year. See MedicareBeneficiary._determine_age for the full
+        rationale; the calculation is identical for ESRD.
+        """
+        if dob:
+            if self.model_year is None:
+                raise ValueError(
+                    "When date of birth is provided, model year must also be provided"
+                )
+            reference_date = datetime.datetime.fromisoformat(f"{self.model_year}-02-01")
+            dt_dob = datetime.datetime.fromisoformat(dob)
+            age = (
+                reference_date.year
+                - dt_dob.year
+                - (
+                    (reference_date.month, reference_date.day)
+                    < (dt_dob.month, dt_dob.day)
+                )
+            )
+        elif age:
+            age = age
+
+        return age
+
+    def _get_risk_model_population(self, population: str) -> str:
+        """
+        Resolve the caller-facing population choice into the fully-qualified weights.csv
+        population column. DIAL, GRAFT_COMM, GRAFT_INST, and the flat TRANSPLANT_*M populations
+        pass through unchanged (V21's base category coefficients for all three don't vary by
+        dual/origdis status at all -- see v21_esrd.py). Only NE_DIAL/NE_GRAFT resolve further.
+
+        Args:
+            population (str): DIAL, GRAFT_COMM, GRAFT_INST, NE_DIAL, NE_GRAFT, or one of
+                              TRANSPLANT_1M/TRANSPLANT_2M/TRANSPLANT_3M.
+
+        Returns:
+            str: The fully-qualified weights.csv population column.
+        """
+        if population in ("DIAL", "GRAFT_COMM", "GRAFT_INST") or population.startswith(
+            "TRANSPLANT_"
+        ):
+            return population
+
+        # NE population resolution uses ne_mcaid, not mcaid -- see class docstring.
+        dual = "MCAID" if self.ne_mcaid else "NMCAID"
+        if population == "NE_DIAL":
+            origdis = "ORIGDIS" if self.ne_dial_origdis else "NORIGDIS"
+            return f"NE_DIAL_{dual}_{origdis}"
+        if population == "NE_GRAFT":
+            origdis = "ORIGDIS" if self.ne_graft_origdis else "NORIGDIS"
+            return f"NE_GRAFT_{dual}_{origdis}"
+
+        raise ValueError(
+            f"Unrecognized ESRD population: {population}. Valid values are DIAL, GRAFT_COMM, "
+            "GRAFT_INST, NE_DIAL, NE_GRAFT, TRANSPLANT_1M, TRANSPLANT_2M, TRANSPLANT_3M"
+        )
+
+
 class CommercialBeneficiary(Beneficiary):
     """
     Represents a Commercial beneficiary which expands upon the Beneficiary class and
