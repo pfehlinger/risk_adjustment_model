@@ -301,6 +301,50 @@ def test_new_enrollee():
     assert "NEF67" in results.category_list
 
 
+def test_new_enrollee_medicaid_is_independent_of_ne_medicaid():
+    # CMS's beneficiary file has two separate Medicaid columns -- LTIMCAID (continuing-enrollee
+    # scoring, `medicaid`) and NEMCAID (new-enrollee population resolution, `ne_medicaid`) --
+    # which are not guaranteed to agree for a given beneficiary. `ne_medicaid` must drive NE
+    # population resolution, not `medicaid`.
+    model = MedicareModelV28()
+    results = model.score(
+        gender="F",
+        orec="0",
+        medicaid=True,
+        ne_medicaid=False,
+        diagnosis_codes=[],
+        age=67,
+        population="NE",
+        verbose=False,
+    )
+    assert results.risk_model_population == "NE_NMCAID_NORIGDIS"
+
+    results = model.score(
+        gender="F",
+        orec="0",
+        medicaid=False,
+        ne_medicaid=True,
+        diagnosis_codes=[],
+        age=67,
+        population="NE",
+        verbose=False,
+    )
+    assert results.risk_model_population == "NE_MCAID_NORIGDIS"
+
+    # ne_medicaid defaults to medicaid when not passed, preserving prior behavior.
+    results = model.score(
+        gender="F",
+        orec="0",
+        medicaid=True,
+        diagnosis_codes=[],
+        age=67,
+        population="NE",
+        verbose=False,
+    )
+    assert results.risk_model_population == "NE_MCAID_NORIGDIS"
+    assert results.ne_medicaid is True
+
+
 def test_raw_score():
     model = MedicareModelV28(year=2024)
     results = model.score(

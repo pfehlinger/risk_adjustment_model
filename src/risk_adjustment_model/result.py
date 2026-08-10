@@ -78,6 +78,9 @@ class MedicareScoringResult(BaseScoringResult):
         category_details (Dict[str, str]): A dictionary containing details about each category.
         orec (str): The OREC (original reason for entitlement category) of the individual.
         medicaid (bool): Indicates whether the individual has Medicaid coverage.
+        ne_medicaid (bool): Indicates Medicaid coverage used for new-enrollee population
+                            resolution -- a separate CMS input from `medicaid`, see
+                            MedicareBeneficiary's docstring.
         population (str): The population group to which the individual belongs.
         coding_intensity_adjuster (float): The coding intensity adjuster applied to the score.
         normalization_factor (float): The normalization factor applied to the score.
@@ -93,6 +96,7 @@ class MedicareScoringResult(BaseScoringResult):
     population: str
     coding_intensity_adjuster: float
     normalization_factor: float
+    ne_medicaid: bool
 
 
 @dataclass

@@ -43,7 +43,16 @@ class MedicareBeneficiary(Beneficiary):
     Attributes:
         gender (str): The gender of the Medicare beneficiary.
         orec (str): The original reason for entitlement code.
-        medicaid (bool): Indicates whether the beneficiary has Medicaid.
+        medicaid (bool): Indicates whether the beneficiary has Medicaid, for continuing-enrollee
+                         (LTIMCAID demographic interaction) scoring purposes.
+        ne_medicaid (bool): Indicates whether the beneficiary has Medicaid, for new-enrollee
+                            population resolution purposes. CMS's own beneficiary file has two
+                            separate columns for this -- LTIMCAID and NEMCAID -- which are not
+                            guaranteed to agree for a given beneficiary (see
+                            CMS_HCC_utils.py's get_bene_info_df, which reads NEMCAID for the NE
+                            population split and LTIMCAID separately for the CE interaction).
+                            Defaults to `medicaid` when not passed explicitly, preserving prior
+                            behavior for callers who only ever tracked one dual-status flag.
         population (str, optional): The Medicare population type (default is "CNA").
         age (int, optional): The age of the Medicare beneficiary.
         dob (str, optional): The date of birth of the Medicare beneficiary in ISO format.
@@ -73,6 +82,7 @@ class MedicareBeneficiary(Beneficiary):
         age: Union[None, int] = None,
         dob: Union[None, str] = None,
         model_year: Union[None, int] = None,
+        ne_medicaid: Union[None, bool] = None,
     ):
         """
         Initialize a MedicareBeneficiary object.
@@ -81,7 +91,8 @@ class MedicareBeneficiary(Beneficiary):
             gender (str): The gender of the Medicare beneficiary.
             orec (str): The original reason entitlement code. See the below link for more information:
                         https://resdac.org/cms-data/variables/medicare-original-reason-entitlement-code-orec
-            medicaid (bool): A boolean indicating whether the beneficiary has Medicaid.
+            medicaid (bool): A boolean indicating whether the beneficiary has Medicaid, used for
+                             continuing-enrollee (LTIMCAID) scoring.
             population (str, optional): The Medicare population type which the benficiary is
                                         associated with and the score is being computed for.
                                         Valid values are:
@@ -97,10 +108,16 @@ class MedicareBeneficiary(Beneficiary):
             dob (str, optional): The date of birth of the Medicare beneficiary in ISO format.
             model_year (int, optional): The model year which this beneficiary object is associated with.
                               It is necessary to determine the age of the beneficiary if dob is passed in.
+            ne_medicaid (bool, optional): A boolean indicating whether the beneficiary has
+                                          Medicaid, used for new-enrollee population resolution
+                                          (population="NE") -- CMS tracks this as a separate
+                                          input (NEMCAID) from the continuing-enrollee `medicaid`
+                                          flag (LTIMCAID). Defaults to `medicaid` when None.
         """
         super().__init__(gender, age, dob)
         self.orec = orec
         self.medicaid = medicaid
+        self.ne_medicaid = medicaid if ne_medicaid is None else ne_medicaid
         self.population = population
         self.model_year = model_year
         self.risk_model_age = self._determine_age(self.age, self.dob)
@@ -109,7 +126,7 @@ class MedicareBeneficiary(Beneficiary):
         )
         if self.population == "NE":
             self.risk_model_population = self._get_new_enrollee_population(
-                self.risk_model_age, self.orec, self.medicaid
+                self.risk_model_age, self.orec, self.ne_medicaid
             )
         else:
             self.risk_model_population = population
