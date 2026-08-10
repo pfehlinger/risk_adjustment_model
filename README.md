@@ -358,6 +358,61 @@ Verbose results
 {'RXC_06_x_HCC018_019_020_021': {'coefficient': 0.499, 'type': 'rx_interaction', 'category_number': None, 'category_description': 'Additional effect for enrollees with RXC 06 and (HCC 018 or 019 or 020 or 021)', 'dropped_categories': None, 'trigger_code_map': ['RXC_06', 'HHS_HCC020']}, 'MAGE_LAST_45_49': {'coefficient': 0.171, 'type': 'demographic', 'category_number': None, 'category_description': 'Age 45-49, Male', 'dropped_categories': None, 'trigger_code_map': None}, 'RXC_06': {'coefficient': 1.022, 'type': 'rx', 'category_number': 6, 'category_description': 'Insulin', 'dropped_categories': None, 'trigger_code_map': ['00002021301']}, 'G01': {'coefficient': 0.142, 'type': 'group', 'category_number': None, 'category_description': 'G01', 'dropped_categories': ['HHS_HCC020'], 'trigger_code_map': ['HHS_HCC020']}}
 ```
 
+## Cross-Validating Against CMS's Reference Software
+
+Every model version in this repo has been checked against CMS's own Python "Do It Yourself" (DIY)
+reference software at some point during development -- not just internal review. How to re-run
+that check yourself differs by line of business:
+
+### Commercial/ACA (HHS-HCC)
+
+Automated: `scripts/cross_validate_cms.py` generates a batch of synthetic enrollees, scores them
+through both this repo and CMS's real `transform.py`, and reports any mismatches.
+
+```
+poetry install --with cms_validation
+export CMS_PACKAGE_DIR=/path/to/extracted/HHS_HCC_software_package_.../software/HHS_HCC
+poetry run python scripts/cross_validate_cms.py --n 150 --seed 42
+```
+
+See the script's own docstring for what it deliberately excludes (MCE-editable and age/sex-edit
+diagnosis codes) and why.
+
+### Medicare (CMS-HCC, ESRD, RxHCC)
+
+No automated equivalent exists yet for these three families (this is a real gap, not an oversight
+to hide -- if you want one built, ask). Every V22/V24/V28, ESRD V24/V21, and RxHCC T/X/T2/Y1/Y2
+cross-validation done so far was run manually, directly against CMS's own package, as follows:
+
+1. Download and extract the relevant CMS Python DIY package (e.g. `CMS_HCC_v28_2026_T_package`,
+   `ESRD_v24_2026_T_package`, `RxHCC_v8_2027_Y1_package`) from
+   [CMS's Medicare risk adjustment page](https://www.cms.gov/medicare/payment/medicare-advantage-rates-statistics/risk-adjustment).
+2. Create a virtual environment and `pip install -r requirements.txt` from inside the extracted
+   package (it needs `pandas`/`numpy` directly -- this is CMS's own software, independent of this
+   repo's `cms_validation` poetry group).
+3. Edit `software/<Model>/data/input/user_defined/beneficiaries.csv` and `diagnoses.csv` with test
+   beneficiaries. Column layout and `DOB_format` are defined in that model's `config.py` -- they
+   differ by family (e.g. ESRD's beneficiaries.csv has `FBDual,PBDual,LTI`; RxHCC's has `ESRD`; V21
+   ESRD's has `MCAID,NEMCAID`). **Age is computed by CMS as of February 1st of the payment year**,
+   not the package's release date -- get this wrong and every score will look like a mismatch that
+   isn't one.
+4. From the package's base folder (the one containing `software/`, not inside it), run:
+   `python ./software/<Model>/transform.py`. Output lands in
+   `software/<Model>/data/output/*_scores.csv`, with one `SCORE_<population>` column per
+   population CMS's software computes.
+5. Call this repo's `model.score(...)` with the same beneficiary/diagnosis inputs and compare
+   `results.score_raw` against the matching `SCORE_*` column. Each model class's docstring
+   documents its `population` values and, for the ones with a non-obvious CMS-column mapping
+   (ESRD, RxHCC), the exact naming correspondence.
+
+The build scripts in `scripts/` (`build_medicare_reference_data.py`,
+`build_medicare_v22_reference_data.py`, `build_medicare_v24_esrd_reference_data.py`,
+`build_medicare_v21_esrd_reference_data.py`, `build_medicare_rxhcc_reference_data.py`) are the
+tooling that *generates* `reference_data/` from these same CMS packages in the first place --
+re-running the relevant one against a freshly downloaded package is itself a useful check that
+the committed reference data hasn't drifted from CMS's source.
+
+
 ## License
 MIT
 
