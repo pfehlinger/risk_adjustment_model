@@ -96,6 +96,68 @@ class MedicareScoringResult(BaseScoringResult):
 
 
 @dataclass
+class ESRDScoringResult(BaseScoringResult):
+    """
+    Represents the scoring result for a Medicare ESRD (End-Stage Renal Disease) beneficiary.
+
+    Attributes:
+        (see BaseScoringResult for the common fields)
+        orec (str): The OREC (original reason for entitlement category) of the individual.
+        fbdual (bool): Full Benefit Dual status.
+        pbdual (bool): Partial Benefit Dual status.
+        lti (bool): Long-Term Institutional status.
+        population (str): The ESRD population passed in (DIAL, GRAFT_COMM, GRAFT_INST, NE_DIAL,
+                          NE_GRAFT, or one of the flat TRANSPLANT_*M populations).
+        graft_duration_months (int, optional): Months since transplant, used to select the
+                                               graft-duration bonus bucket for GRAFT_COMM/
+                                               GRAFT_INST/NE_GRAFT populations. None for
+                                               DIAL/TRANSPLANT_*M, or a functioning-graft
+                                               population with duration under 4 months (no bonus
+                                               bucket applies yet -- see TRANSPLANT_*M instead).
+        coding_intensity_adjuster (float): The coding intensity adjuster applied to the score.
+        normalization_factor (float): The normalization factor applied to the score.
+    """
+
+    orec: str
+    fbdual: bool
+    pbdual: bool
+    lti: bool
+    population: str
+    graft_duration_months: Union[int, None]
+    coding_intensity_adjuster: float
+    normalization_factor: float
+
+
+@dataclass
+class ESRDv21ScoringResult(BaseScoringResult):
+    """
+    Represents the scoring result for a Medicare ESRD V21 (legacy) beneficiary.
+
+    Attributes:
+        (see BaseScoringResult for the common fields)
+        orec (str): The OREC (original reason for entitlement category) of the individual.
+        mcaid (bool): Medicaid dual status used for continuing-enrollee scoring.
+        ne_mcaid (bool): Medicaid dual status used for new-enrollee population resolution -- a
+                         separate CMS input from `mcaid`, see ESRDv21Beneficiary.
+        population (str): The ESRD population passed in (DIAL, GRAFT_COMM, GRAFT_INST, NE_DIAL,
+                          NE_GRAFT, or one of the flat TRANSPLANT_*M populations).
+        graft_duration_months (int, optional): Months since transplant, used to select the
+                                               graft-duration bonus bucket for GRAFT_COMM/
+                                               GRAFT_INST/NE_GRAFT populations.
+        coding_intensity_adjuster (float): The coding intensity adjuster applied to the score.
+        normalization_factor (float): The normalization factor applied to the score.
+    """
+
+    orec: str
+    mcaid: bool
+    ne_mcaid: bool
+    population: str
+    graft_duration_months: Union[int, None]
+    coding_intensity_adjuster: float
+    normalization_factor: float
+
+
+@dataclass
 class CommercialScoringResult(BaseScoringResult):
     """
     Represents the scoring result for a commercial insurance beneficiary.

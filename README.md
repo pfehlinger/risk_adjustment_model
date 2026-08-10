@@ -9,6 +9,10 @@ Currently, risk_adjustment_model supports the below model versions:
   * V22
   * V24
   * V28
+* Medicare ESRD (End-Stage Renal Disease) -- a Medicare model variant, not a separate line of
+  business; imported alongside the CMS-HCC classes above
+  * V21
+  * V24
 * Commercial/ACA (HHS-HCC)
   * V07
   * V08
@@ -56,9 +60,11 @@ and then pip installing locally into an virtual environment
   - `result.py`: class to encapsulate the output of a scoring run.
   - `utilities.py`: Contains generic functions that are used throughout codebase.
   - `v22.py`, `v24.py`, `v28.py`: Medicare model version classes (`MedicareModelV22`, `MedicareModelV24`, `MedicareModelV28`).
+  - `v24_esrd.py`, `v21_esrd.py`: Medicare ESRD model version classes (`MedicareModelESRDv24`, `MedicareModelESRDv21`). Unlike Community, `population` is one of DIAL/GRAFT_COMM/GRAFT_INST/NE_DIAL/NE_GRAFT/TRANSPLANT_1M/TRANSPLANT_2M/TRANSPLANT_3M -- see `MedicareModelESRDv24`'s module docstring for the full design (score composition, graft-duration bonus math, why renal categories are excluded from V24 but not V21).
   - `v07.py`, `v08.py`: Commercial/ACA model version classes (`CommercialModelV07`, `CommercialModelV08`).
 - `scripts/`: Developer/maintainer tooling, not part of the published package.
   - `build_v08_reference_data.py`: Regenerates Commercial/ACA reference data for a benefit year from a CMS DIY software package.
+  - `build_medicare_reference_data.py`, `build_medicare_v22_reference_data.py`, `build_medicare_v24_esrd_reference_data.py`, `build_medicare_v21_esrd_reference_data.py`: Regenerate/cold-start Medicare (CMS-HCC and ESRD) reference data from CMS DIY software packages.
   - `cross_validate_cms.py`: Cross-validates `CommercialModelV08` against CMS's own DIY software on a synthetic dataset (see script docstring for setup).
 - `tests/`: Tests are stored here, one for each model version.
 - `README.md`: This README file.
@@ -180,6 +186,37 @@ Verbose results
 >>> results.category_details
 {'DIABETES_CHF': {'coefficient': 0.121, 'type': 'disease_interaction', 'category_number': None, 'category_description': 'Congestive Heart Failure*Diabetes', 'dropped_categories': None, 'diagnosis_map': None}, 'D3': {'coefficient': 0.0, 'type': 'disease_count', 'category_number': None, 'category_description': '3 payment HCCs', 'dropped_categories': None, 'diagnosis_map': None}, 'M70_74': {'coefficient': 0.394, 'type': 'demographic', 'category_number': None, 'category_description': 'Male, 70 to 74 Years old', 'dropped_categories': None, 'diagnosis_map': None}, 'HCC86': {'coefficient': 0.195, 'type': 'disease', 'category_number': 86, 'category_description': 'Acute Myocardial Infarction', 'dropped_categories': ['HCC88'], 'diagnosis_map': ['I2111']}, 'HCC18': {'coefficient': 0.302, 'type': 'disease', 'category_number': 18, 'category_description': 'Diabetes with Chronic Complications', 'dropped_categories': None, 'diagnosis_map': ['E1169']}, 'HCC85': {'coefficient': 0.331, 'type': 'disease', 'category_number': 85, 'category_description': 'Congestive Heart Failure', 'dropped_categories': None, 'diagnosis_map': ['I5030', 'I509']}}
 ```
+
+
+## Medicare ESRD (End-Stage Renal Disease) Models
+
+ESRD (`MedicareModelESRDv24`, `MedicareModelESRDv21`) is a Medicare model variant, not a separate
+line of business -- import it from `risk_adjustment_model` alongside the CMS-HCC classes above.
+Unlike Community, `population` is not CNA/CND/etc: CMS's own ESRD software computes a whole family
+of score variants per beneficiary (dialysis, community-graft, institutional-graft, new-enrollee
+dialysis/graft, flat transplant-month scores) and leaves it to the caller to know which one
+applies. Consistent with how this repo already requires an explicit `population` for Community,
+the caller passes one `population` value and gets back one score for it -- never every variant at
+once. Valid values: `DIAL`, `GRAFT_COMM`, `GRAFT_INST`, `NE_DIAL`, `NE_GRAFT`, `TRANSPLANT_1M`,
+`TRANSPLANT_2M`, `TRANSPLANT_3M`. See `MedicareModelESRDv24`'s module docstring for the full
+design, including the graft-duration bonus math for GRAFT_COMM/GRAFT_INST/NE_GRAFT.
+
+```python
+>>> from risk_adjustment_model import MedicareModelESRDv24
+>>> model = MedicareModelESRDv24()
+>>> results = model.score(gender="M", orec="0", diagnosis_codes=["E1169"], age=67, population="DIAL")
+>>> results.score_raw
+0.661
+>>> results = model.score(gender="F", orec="0", fbdual=True, diagnosis_codes=["D66"], age=67, population="GRAFT_COMM", graft_duration_months=6)
+>>> results.risk_model_population
+'GRAFT_COMM_FBD_GE65'
+```
+
+`MedicareModelESRDv21` (the legacy model) uses the same `population` vocabulary, but its own set
+of beneficiary flags (`mcaid`, `ne_mcaid` -- two independent Medicaid dual-status inputs, not one;
+no `pbdual`/`lti` at all). See `MedicareModelESRDv21`'s module docstring for what's simpler than
+V24 (no institutional-vs-community dual/aged split, no NE actuarial adjustment, renal categories
+scored normally rather than excluded).
 
 
 ## Commercial/ACA (HHS-HCC) Models

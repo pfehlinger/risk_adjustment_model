@@ -41,6 +41,17 @@ class ReferenceFilesLoader:
         self.category_map = self._get_category_mapping(lob, category_prefix)
         if lob == "commercial":
             self.group_definitions = self._get_group_definitions()
+        # ESRD-only flat lookup tables: these don't fit weights.csv's category-by-population
+        # shape (they're small, single-value tables applied as scoring-time adjustments on top
+        # of the normal category sum, not per-category coefficients -- see v24_esrd.py). Gated
+        # on file presence rather than lob, since ESRD stays under lob="medicare".
+        for attr, filename in (
+            ("graft_duration_scores", "graft_duration_scores.csv"),
+            ("institutional_graft_scores", "institutional_graft_scores.csv"),
+            ("transplant_scores", "transplant_scores.csv"),
+        ):
+            if (self.data_directory / filename).exists():
+                setattr(self, attr, self._get_flat_score_table(filename))
 
     def _get_hierarchy_definitions(self) -> dict:
         """
@@ -130,6 +141,29 @@ class ReferenceFilesLoader:
                         weights[category] = pop_weight
 
         return weights
+
+    def _get_flat_score_table(self, filename: str) -> dict:
+        """
+        Retrieve a flat key->score lookup table from a two-column CSV file (key, score), used
+        for ESRD's graft-duration, institutional-graft-duration, and flat transplant-month score
+        tables.
+
+        Args:
+            filename (str): Name of the CSV file within data_directory, e.g. "transplant_scores.csv".
+
+        Returns:
+            dict: A dictionary mapping the key column (e.g. "GE65_DUR4_9_FBD",
+                 "TRANSPLANT_KIDNEY_ONLY_1M") to its float score.
+        """
+        table = {}
+        with open(self.data_directory / filename, "r") as file:
+            for i, line in enumerate(file):
+                if i == 0:
+                    continue
+                key, score = line.strip().split(",")
+                table[key] = float(score)
+
+        return table
 
     def _get_category_mapping(self, lob, category_prefix="HCC") -> dict:
         """
