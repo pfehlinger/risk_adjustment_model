@@ -25,6 +25,17 @@ implemented at all (see README.md's "key design decisions").
 Exercises the LTIMCAID/NEMCAID distinction directly: each synthetic beneficiary gets independently
 randomized `medicaid` (LTIMCAID, continuing-enrollee scoring) and `ne_medicaid` (NEMCAID, new-
 enrollee population resolution) flags, so a regression in that split would be caught here.
+
+To validate against real data instead of Faker output (e.g. in a production setting), pass
+--real-data-dir pointing at a directory containing:
+
+    beneficiaries.csv: ID,DOB,SEX,OREC,MEDICAID,NE_MEDICAID
+        DOB is ISO format (YYYY-MM-DD). SEX is M/F. MEDICAID/NE_MEDICAID are 1/0/true/false.
+    diagnoses.csv: ID,ICD10
+        One row per (beneficiary, code) pair.
+
+See scripts/_real_data.py's module docstring for the shared conventions (DOB format, boolean
+parsing, and why real diagnosis codes aren't filtered the way synthetic ones are).
 """
 
 import argparse
@@ -37,6 +48,14 @@ from pathlib import Path
 
 import pandas as pd
 from faker import Faker
+
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from _real_data import (  # noqa: E402
+    age_as_of_feb_1,
+    parse_bool,
+    parse_iso_dob,
+    read_real_csv,
+)
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 
@@ -130,6 +149,32 @@ def generate_beneficiaries(n: int, seed: int, diag_codes: list) -> list:
                 "medicaid": medicaid,
                 "ne_medicaid": ne_medicaid,
                 "diagnoses": diagnoses,
+            }
+        )
+    return beneficiaries
+
+
+def load_real_beneficiaries(real_data_dir: Path, year: int) -> list:
+    diag_rows = read_real_csv(real_data_dir, "diagnoses.csv")
+    diagnoses_by_id = {}
+    for row in diag_rows:
+        diagnoses_by_id.setdefault(row["ID"].strip(), []).append(row["ICD10"].strip())
+
+    beneficiaries = []
+    for row in read_real_csv(real_data_dir, "beneficiaries.csv"):
+        bene_id = row["ID"].strip()
+        dob = parse_iso_dob(row["DOB"])
+        gender = row["SEX"].strip().upper()
+        beneficiaries.append(
+            {
+                "id": bene_id,
+                "gender_code": 1 if gender == "M" else 2,
+                "gender": gender,
+                "age": age_as_of_feb_1(dob, year),
+                "orec": row["OREC"].strip(),
+                "medicaid": parse_bool(row["MEDICAID"]),
+                "ne_medicaid": parse_bool(row["NE_MEDICAID"]),
+                "diagnoses": diagnoses_by_id.get(bene_id, []),
             }
         )
     return beneficiaries
@@ -245,13 +290,26 @@ def main():
     parser.add_argument("--cms-package-dir", required=True, type=Path)
     parser.add_argument("--n", type=int, default=150)
     parser.add_argument("--seed", type=int, default=42)
+    parser.add_argument(
+        "--real-data-dir",
+        type=Path,
+        default=None,
+        help="Validate against real data instead of Faker output. See module docstring for "
+        "the expected beneficiaries.csv/diagnoses.csv format.",
+    )
     args = parser.parse_args()
 
-    diag_codes = read_unconditional_diag_codes(
-        args.cms_package_dir, args.version, args.year
-    )
-    beneficiaries = generate_beneficiaries(args.n, args.seed, diag_codes)
-    print(f"Generated {len(beneficiaries)} synthetic beneficiaries.")
+    if args.real_data_dir:
+        beneficiaries = load_real_beneficiaries(args.real_data_dir, args.year)
+        print(
+            f"Loaded {len(beneficiaries)} real beneficiaries from {args.real_data_dir}."
+        )
+    else:
+        diag_codes = read_unconditional_diag_codes(
+            args.cms_package_dir, args.version, args.year
+        )
+        beneficiaries = generate_beneficiaries(args.n, args.seed, diag_codes)
+        print(f"Generated {len(beneficiaries)} synthetic beneficiaries.")
 
     write_cms_inputs(args.cms_package_dir, beneficiaries, args.year)
     print("Running CMS transform.py...")

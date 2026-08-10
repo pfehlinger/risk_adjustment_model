@@ -25,6 +25,26 @@ crosswalk, for two different reasons:
   CMS's MCE claims-editing plausibility checks at all (see README.md's "key design decisions"
   and CommercialModel's class docstring) -- CMS would reject some enrollee/code combinations
   this repo would accept, which would produce mismatches unrelated to what this script tests.
+
+To validate against real data instead of Faker output (e.g. in a production setting), pass
+--real-data-dir pointing at a directory containing:
+
+    person.csv: ID,AGE,SEX,METAL,CSR_INDICATOR,ENROLLMENT_MONTH
+        AGE is age as of the last eligibility date of the benefit year (CMS's own AGE_LAST
+        concept -- see CommercialBeneficiary._determine_age's docstring for why this repo takes
+        age directly rather than DOB-plus-last-enrollment-date here, unlike the Medicare
+        families' simpler Feb-1-cutoff DOB math). SEX is M/F. METAL is a metal name (Platinum/
+        Gold/Silver/Bronze/Catastrophic) or CMS's single-letter code (P/G/S/B/C).
+        ENROLLMENT_MONTH is CMS's own ENROLDURATION value (1-12, the count of enrolled months) --
+        it's converted to a representative day count the same way synthetic enrollees are, so
+        both sides land on the same enrollment-days bucket.
+    diagnoses.csv: ID,ICD10
+    ndc.csv (optional): ID,NDC
+    hcpcs.csv (optional): ID,HCPCS
+        One row per (enrollee, code) pair. Omit ndc.csv/hcpcs.csv entirely if not needed --
+        they're only relevant to ACF/other NDC- or HCPCS-driven categories.
+
+See scripts/_real_data.py's module docstring for the shared conventions.
 """
 
 import argparse
@@ -41,6 +61,7 @@ from faker import Faker
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from _cms_package import find_cms_root  # noqa: E402
+from _real_data import read_real_csv  # noqa: E402
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 CMS_ROOT = find_cms_root()
@@ -196,6 +217,73 @@ def generate_enrollees(n: int, seed: int, year: int) -> list:
     return enrollees
 
 
+METAL_NAME_TO_CODE = {name.upper(): code for code, name in METAL_CODE_TO_NAME.items()}
+
+
+def population_from_age(age: int) -> str:
+    if age <= 1:
+        return "Infant"
+    if age <= 20:
+        return "Child"
+    return "Adult"
+
+
+def parse_metal(value: str) -> str:
+    value = value.strip().upper()
+    if value in METAL_CODE_TO_NAME:
+        return value
+    if value in METAL_NAME_TO_CODE:
+        return METAL_NAME_TO_CODE[value]
+    raise SystemExit(f"Unrecognized METAL value: {value!r}")
+
+
+def load_real_enrollees(real_data_dir: Path, year: int) -> list:
+    diagnoses_by_id = {}
+    for row in read_real_csv(real_data_dir, "diagnoses.csv"):
+        diagnoses_by_id.setdefault(row["ID"].strip(), []).append(row["ICD10"].strip())
+
+    ndc_by_id = {}
+    try:
+        for row in read_real_csv(real_data_dir, "ndc.csv"):
+            ndc_by_id.setdefault(row["ID"].strip(), []).append(row["NDC"].strip())
+    except FileNotFoundError:
+        pass
+
+    hcpcs_by_id = {}
+    try:
+        for row in read_real_csv(real_data_dir, "hcpcs.csv"):
+            hcpcs_by_id.setdefault(row["ID"].strip(), []).append(row["HCPCS"].strip())
+    except FileNotFoundError:
+        pass
+
+    enrollees = []
+    for row in read_real_csv(real_data_dir, "person.csv"):
+        member_id = row["ID"].strip()
+        gender = row["SEX"].strip().upper()
+        age = int(row["AGE"])
+        metal_code = parse_metal(row["METAL"])
+        enrollment_month = int(row["ENROLLMENT_MONTH"])
+        enrollees.append(
+            {
+                "id": member_id,
+                "gender_code": 1 if gender == "M" else 2,
+                "gender": gender,
+                "age": age,
+                "population": population_from_age(age),
+                "dob": date(year - age, 6, 15),
+                "metal_code": metal_code,
+                "metal_name": METAL_CODE_TO_NAME[metal_code],
+                "csr_indicator": int(row["CSR_INDICATOR"]),
+                "enrollment_month": enrollment_month,
+                "enrollment_days": ENROLLMENT_MONTH_TO_DAYS[enrollment_month],
+                "diagnoses": diagnoses_by_id.get(member_id, []),
+                "ndc": ndc_by_id.get(member_id, []),
+                "hcpcs": hcpcs_by_id.get(member_id, []),
+            }
+        )
+    return enrollees
+
+
 def write_cms_inputs(enrollees: list, year: int):
     diag_date = f"{year}0315"
     with open(CMS_USER_DEFINED / "PERSON.csv", "w", newline="") as f:
@@ -322,13 +410,24 @@ def main():
     parser.add_argument(
         "--seed", type=int, default=42, help="Random seed, for reproducibility."
     )
+    parser.add_argument(
+        "--real-data-dir",
+        type=Path,
+        default=None,
+        help="Validate against real data instead of Faker output. See module docstring for "
+        "the expected person.csv/diagnoses.csv/ndc.csv/hcpcs.csv format.",
+    )
     args = parser.parse_args()
 
     year = get_benefit_year()
     print(f"CMS package benefit year: {year}")
 
-    enrollees = generate_enrollees(args.n, args.seed, year)
-    print(f"Generated {len(enrollees)} synthetic enrollees.")
+    if args.real_data_dir:
+        enrollees = load_real_enrollees(args.real_data_dir, year)
+        print(f"Loaded {len(enrollees)} real enrollees from {args.real_data_dir}.")
+    else:
+        enrollees = generate_enrollees(args.n, args.seed, year)
+        print(f"Generated {len(enrollees)} synthetic enrollees.")
 
     try:
         write_cms_inputs(enrollees, year)

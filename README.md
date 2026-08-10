@@ -436,6 +436,35 @@ tooling that *generates* `reference_data/` from these same CMS packages in the f
 re-running the relevant one against a freshly downloaded package is itself a useful check that
 the committed reference data hasn't drifted from CMS's source.
 
+### Validating against real data instead of Faker
+
+All four cross-validation scripts above default to Faker-generated synthetic data, but each also
+accepts a `--real-data-dir` flag as a drop-in alternative -- useful if you want to validate this
+repo against CMS's reference software using actual production beneficiary/diagnosis data (e.g.
+before adopting a new model year in a production setting), not just synthetic coverage.
+
+Point it at a directory of plain CSV files, in place of `--n`/`--seed`:
+
+```
+poetry run python scripts/cross_validate_medicare_cms.py \
+    --version v28 --year 2026 \
+    --cms-package-dir /path/to/extracted/CMS_HCC_v28_2026_T_package_.../software/CMS_HCC_v28 \
+    --real-data-dir /path/to/your/real/data
+```
+
+The file format is this repo's own stable interchange format (`ID,DOB,SEX,OREC,...`, ISO dates),
+independent of whatever the specific CMS package vintage's own input-file layout happens to be --
+see `scripts/_real_data.py`'s module docstring for the shared conventions, and each cross-
+validation script's own docstring for its exact `beneficiaries.csv`/`diagnoses.csv` (or, for
+Commercial, `person.csv`/`diagnoses.csv`/`ndc.csv`/`hcpcs.csv`) column list. If you already have a
+production system exporting CMS-submission-format extracts, translating them into this format is
+a small mapping, not a rewrite.
+
+One caveat worth knowing before interpreting results: unlike the synthetic path, real diagnosis
+codes are **not** filtered down to CMS's "no MCE/age/sex condition" subset first (see "key design
+decisions" above on MCE claims-editing) -- a mismatch caused by a real beneficiary having an
+MCE-age-restricted code is expected, not a bug in either implementation.
+
 
 ## License
 MIT
