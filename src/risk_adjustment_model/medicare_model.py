@@ -76,6 +76,7 @@ class MedicareModel(BaseModel):
         dob: Union[str, None] = None,
         population: str = "CNA",
         verbose: bool = False,
+        ne_medicaid: Union[bool, None] = None,
     ) -> Type[MedicareScoringResult]:
         """
         Determines the risk score for the inputs. Entry point for end users.
@@ -91,18 +92,26 @@ class MedicareModel(BaseModel):
         Args:
             gender (str): Gender of the beneficiary being scored, valid values M or F.
             orec (str): Original Entitlement Reason Code of the beneficiary. See: https://bluebutton.cms.gov/assets/ig/ValueSet-orec.html for valid values
-            medicaid (bool): Beneficiary medicaid status, True or False
+            medicaid (bool): Beneficiary medicaid status, True or False. Used for continuing-
+                             enrollee (LTIMCAID) scoring; see ne_medicaid for new enrollees.
             diagnosis_codes (list): List of the diagnosis codes associated with the beneficiary
             age (int): Age of the beneficiary, can be None.
             dob (str): Date of birth of the beneficiary, can be None
             population (str): Population of beneficiary being scored, valid values are CNA, CND, CPA, CPD, CFA, CFD, INS, NE
             verbose (bool): Indicates if trimmed output or full output is desired
+            ne_medicaid (bool, optional): Beneficiary medicaid status used specifically for
+                                          new-enrollee (population="NE") sub-population
+                                          resolution. CMS tracks this as a separate beneficiary-
+                                          file column (NEMCAID) from the continuing-enrollee
+                                          `medicaid` flag (LTIMCAID), and the two are not
+                                          guaranteed to agree for a given beneficiary. Defaults
+                                          to `medicaid` when not passed.
 
         Returns:
             MedicareScoringResult: An instantiated object of ScoringResult class.
         """
         beneficiary = MedicareBeneficiary(
-            gender, orec, medicaid, population, age, dob, self.model_year
+            gender, orec, medicaid, population, age, dob, self.model_year, ne_medicaid
         )
         demo_categories = self._determine_demographic_categories(beneficiary)
 
@@ -173,6 +182,7 @@ class MedicareModel(BaseModel):
             gender=beneficiary.gender,
             orec=beneficiary.orec,
             medicaid=beneficiary.medicaid,
+            ne_medicaid=beneficiary.ne_medicaid,
             age=beneficiary.age,
             dob=beneficiary.dob,
             diagnosis_codes=diagnosis_codes,

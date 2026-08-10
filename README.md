@@ -105,15 +105,23 @@ To import any of the model classes from `risk_adjustment_model`
         Args:
             gender (str): Gender of the beneficiary being scored, valid values M or F.
             orec (str): Original Entitlement Reason Code of the beneficiary. See: https://bluebutton.cms.gov/assets/ig/ValueSet-orec.html for valid values
-            medicaid (bool): Beneficiary medicaid status, True or False
+            medicaid (bool): Beneficiary medicaid status, True or False. Used for continuing-
+                             enrollee (LTIMCAID) scoring; see ne_medicaid for new enrollees.
             diagnosis_codes (list): List of the diagnosis codes associated with the beneficiary
             age (int): Age of the beneficiary, can be None.
             dob (str): Date of birth of the beneficiary, can be None
             population (str): Population of beneficiary being scored, valid values are CNA, CND, CPA, CPD, CFA, CFD, INS, NE
             verbose (bool): Indicates if trimmed output or full output is desired
+            ne_medicaid (bool, optional): Beneficiary medicaid status used specifically for
+                                          new-enrollee (population="NE") sub-population
+                                          resolution. CMS tracks this as a separate beneficiary-
+                                          file column (NEMCAID) from the continuing-enrollee
+                                          `medicaid` flag (LTIMCAID), and the two are not
+                                          guaranteed to agree for a given beneficiary. Defaults
+                                          to `medicaid` when not passed.
 
         Returns:
-            ScoringResult: An instantiated object of ScoringResult class.
+            MedicareScoringResult: An instantiated object of ScoringResult class.
 >>>
 ```
 
