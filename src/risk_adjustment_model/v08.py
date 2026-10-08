@@ -32,8 +32,8 @@ class CommercialModelV08(CommercialModel):
             "description": "March 30, 2026: 2025 Benefit Year Risk Adjustment Updated HHS-Developed Risk Adjustment Model Algorithm 'Do It Yourself (DIY)' Software",
         },
         2026: {
-            "version": "1.0",
-            "description": "July 31, 2026: 2026 Benefit Year HHS-Developed Risk Adjustment Model Algorithm 'Do It Yourself (DIY)' Software (Version 08 HHS-HCC Python Software Package V0826.141.E1)",
+            "version": "1.1",
+            "description": "October 1, 2026: 2026 Benefit Year HHS-Developed Risk Adjustment Model Algorithm 'Do It Yourself (DIY)' Software (Version 08 HHS-HCC Python Software Package V0826.141.E1_v5; errata removing J0750 from the ACF HCPCS mappings)",
         },
     }
 
