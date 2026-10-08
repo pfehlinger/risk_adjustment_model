@@ -648,7 +648,7 @@ def test_reference_files_version():
     assert "3.0" == model.reference_files_version
 
     model = CommercialModelV08(year=2026)
-    assert "1.0" == model.reference_files_version
+    assert "1.1" == model.reference_files_version
 
 
 def test_csr_adjuster():
@@ -814,3 +814,151 @@ def test_acf_categories():
         verbose=False,
     )
     assert "ACF_PrEP" not in results.category_list
+
+    # CMS errata (V0826.141.E1_v5): J0750 was removed from acf_HCPCS_mappings.csv, so it
+    # no longer triggers either ACF category; the remaining PrEP HCPCS codes still do
+    results = model.score(
+        gender="M",
+        metal_level="Silver",
+        csr_indicator=1,
+        enrollment_days=365,
+        proc_codes=["J0750"],
+        age=35,
+        verbose=False,
+    )
+    assert "ACF_PrEP" not in results.category_list
+
+    results = model.score(
+        gender="M",
+        metal_level="Silver",
+        csr_indicator=1,
+        enrollment_days=365,
+        proc_codes=["J0750"],
+        age=15,
+        verbose=False,
+    )
+    assert "ACF_PrEP_Child" not in results.category_list
+
+    for proc_code in ["J0752", "J0738"]:
+        results = model.score(
+            gender="M",
+            metal_level="Silver",
+            csr_indicator=1,
+            enrollment_days=365,
+            proc_codes=[proc_code],
+            age=35,
+            verbose=False,
+        )
+        assert "ACF_PrEP" in results.category_list
+
+
+def test_no_claims_enrollees():
+    # CMS's BY2025 errata fixed risk score calculation for enrollees without claims;
+    # they should get demographic-only scores (infants default to Age1 x Severity1)
+    expected = {
+        2025: {
+            "adult": 0.119,
+            "child": 0.113,
+            "infant_m": 0.431 + 0.060,
+            "infant_f": 0.431,
+        },
+        2026: {
+            "adult": 0.118,
+            "child": 0.115,
+            "infant_m": 0.431 + 0.044,
+            "infant_f": 0.431,
+        },
+    }
+    for year, scores in expected.items():
+        model = CommercialModelV08(year=year)
+
+        results = model.score(
+            gender="M",
+            metal_level="Silver",
+            csr_indicator=1,
+            enrollment_days=365,
+            age=35,
+            verbose=False,
+        )
+        assert results.category_list == ["MAGE_LAST_35_39"]
+        assert round(results.score, 3) == scores["adult"]
+
+        results = model.score(
+            gender="F",
+            metal_level="Silver",
+            csr_indicator=1,
+            enrollment_days=365,
+            age=12,
+            verbose=False,
+        )
+        assert results.category_list == ["FAGE_LAST_10_14"]
+        assert round(results.score, 3) == scores["child"]
+
+        # Male infants of age 0 and 1 without claims both get Age1_Male, never Age0_Male
+        for age in [0, 1]:
+            results = model.score(
+                gender="M",
+                metal_level="Silver",
+                csr_indicator=1,
+                enrollment_days=365,
+                age=age,
+                verbose=False,
+            )
+            assert sorted(results.category_list) == ["Age1_Male", "Age1_x_Severity1"]
+            assert round(results.score, 3) == round(scores["infant_m"], 3)
+
+        results = model.score(
+            gender="F",
+            metal_level="Silver",
+            csr_indicator=1,
+            enrollment_days=365,
+            age=0,
+            verbose=False,
+        )
+        assert results.category_list == ["Age1_x_Severity1"]
+        assert round(results.score, 3) == scores["infant_f"]
+
+
+def test_hemophilia_hcc066():
+    # CMS's BY2026 errata fixed HCC 066 scoring; D66/D67 map to HCC 066 for males and
+    # HCC 075 for females, and HCC 066 sits above HCC 075 in the hierarchy
+    model = CommercialModelV08(year=2026)
+
+    for dx_code in ["D66", "D67"]:
+        for age in [35, 12]:
+            results = model.score(
+                gender="M",
+                metal_level="Silver",
+                csr_indicator=1,
+                enrollment_days=365,
+                diagnosis_codes=[dx_code],
+                age=age,
+                verbose=False,
+            )
+            assert "HHS_HCC066" in results.category_list
+            assert "HHS_HCC075" not in results.category_list
+
+            results = model.score(
+                gender="F",
+                metal_level="Silver",
+                csr_indicator=1,
+                enrollment_days=365,
+                diagnosis_codes=[dx_code],
+                age=age,
+                verbose=False,
+            )
+            assert "HHS_HCC075" in results.category_list
+            assert "HHS_HCC066" not in results.category_list
+
+    results = model.score(
+        gender="M",
+        metal_level="Silver",
+        csr_indicator=1,
+        enrollment_days=365,
+        diagnosis_codes=["D66", "D6800"],
+        age=35,
+        verbose=False,
+    )
+    assert "HHS_HCC066" in results.category_list
+    assert "HHS_HCC075" in results.dropped_category_list
+    assert round(results.category_details["HHS_HCC066"]["coefficient"], 3) == 73.627

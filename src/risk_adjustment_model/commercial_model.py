@@ -506,9 +506,7 @@ class CommercialModel(BaseModel):
             )
             # Remove Age0_Male from list
             categories = [
-                category
-                for category in categories
-                if category.category not in "Age0_Male"
+                category for category in categories if category.category != "Age0_Male"
             ]
 
         return categories
